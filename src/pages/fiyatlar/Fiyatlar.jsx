@@ -3,7 +3,7 @@ import Header from '../../components/header/Header'
 const Fiyatlar = () => {
   return (
     <div>
-      <Header/>
+      <h1>Fiyatlar</h1>
     </div>
   )
 }
