@@ -16,7 +16,7 @@ const Navbar = ({isOpen}) => {
                 onClick={() => setIsOpen(false)} // Mobil menüde tıklanınca kapanır
               
              >
-          <li className='border-2 rounded py-2'>
+          <li className='border-2 md:border-none rounded py-2'>
               Kimler İçin
           </li>
           </NavLink>
@@ -28,7 +28,7 @@ const Navbar = ({isOpen}) => {
                 }
                 onClick={() => setIsOpen(false)} // Mobil menüde tıklanınca kapanır
               >
-          <li className='border-2 rounded py-2'>
+          <li className='border-2 md:border-none rounded py-2'>
               Özellikler
           </li>
           </NavLink>
@@ -41,7 +41,7 @@ const Navbar = ({isOpen}) => {
                 onClick={() => setIsOpen(false)} // Mobil menüde tıklanınca kapanır
               
             >
-          <li className='border-2 rounded py-2'>
+          <li className='border-2 md:border-none rounded py-2'>
               Hakkımızda
           </li>
           </NavLink>
@@ -53,7 +53,7 @@ const Navbar = ({isOpen}) => {
                 onClick={() => setIsOpen(false)} // Mobil menüde tıklanınca kapanır
               
             >
-          <li className='border-2 rounded py-2'>
+          <li className='border-2 md:border-none rounded py-2'>
               Fiyatlar
           </li>
             </NavLink> 
@@ -66,7 +66,7 @@ const Navbar = ({isOpen}) => {
                 onClick={() => setIsOpen(false)} // Mobil menüde tıklanınca kapanır
               
             >
-          <li className='border-2 rounded py-2'>
+          <li className='border-2 rounded md:border-none py-2'>
               Ortaklıklar
           </li>
           </NavLink>
@@ -78,7 +78,7 @@ const Navbar = ({isOpen}) => {
                 onClick={() => setIsOpen(false)} // Mobil menüde tıklanınca kapanır
               
             >
-          <li className='border-2 rounded py-2 '>
+          <li className='border-2 md:border-none rounded  py-2 '>
               İletişim
         </li>
         </NavLink>
