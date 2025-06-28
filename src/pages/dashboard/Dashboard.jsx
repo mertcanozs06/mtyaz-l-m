@@ -46,10 +46,7 @@ const Dashboard = () => {
                              </button>
                              </div>
             <DashboardNavbar isOpen={isOpen}/>
-             
-
-            
-
+ 
         </div>
 
         <div className='flex-1 h-full ml-10 '>
