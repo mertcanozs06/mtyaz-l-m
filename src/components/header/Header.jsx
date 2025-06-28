@@ -11,12 +11,12 @@ const Header = () => {
 
   return (
     <>
-      <header className="w-full h-20 p-4 flex items-center justify-between bg-white shadow-md relative z-50">
+      <header className="w-full    h-20  p-4 flex items-center justify-between bg-white ">
         <Logo />
 
         {/* Hamburger Buton - sadece mobilde görünür */}
         <button
-          className="block md:hidden focus:outline-none"
+          className="block md:hidden focus:outline-none flex-shrink-0"
           onClick={toggleMenu}
           aria-label="Toggle menu"
         >

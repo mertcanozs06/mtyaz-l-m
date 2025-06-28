@@ -4,7 +4,7 @@ import GirişYap from './girişyap/GirişYap';
 import ÜyeOl from './üyeol/ÜyeOl';
 const Links = ({isOpen}) => {
   return (
-   <div className='flex gap-4  ml-6'>
+   <div className='flex overflow-x-hidden   gap-4  ml-6'>
      <GirişYap/> 
      <ÜyeOl/> 
 
