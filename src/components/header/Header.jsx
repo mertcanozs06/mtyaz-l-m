@@ -11,7 +11,7 @@ const Header = () => {
 
   return (
     <>
-      <header className="w-full    h-20  p-4 flex items-center justify-between bg-white ">
+      <header className="w-full flex-wrap    h-25  p-4 flex items-center justify-between bg-white mb-2 ">
         <Logo />
 
         {/* Hamburger Buton - sadece mobilde görünür */}
