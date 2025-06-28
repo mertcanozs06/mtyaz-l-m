@@ -1,13 +1,14 @@
-import React from 'react'
-import Header from '../../components/header/Header'
-import Slick from '../../components/slider/Slick'
+import React from 'react';
+import Header from '../../components/header/Header';
+import Slick from '../../components/slider/Slick';
+
 const Home = () => {
   return (
-  <div className="w-full h-screen">
-      <Header/>
-      <Slick/>
-  </div>
-  )
-}
+    <main className="w-full min-h-screen overflow-x-hidden">
+      <Header />
+      <Slick />
+    </main>
+  );
+};
 
-export default Home
+export default Home;
