@@ -12,7 +12,7 @@ const Header = () => {
       setIsOpen(!isOpen);
     };
   return (
-    <div className="w-full h-20 p-4 flex items-center justify-between">
+    <div className="w-full md:max-w-full h-20 p-4 flex items-center justify-between">
          <Logo/>
            <button
                    className=" block md:hidden focus:outline-none"

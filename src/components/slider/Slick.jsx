@@ -15,7 +15,7 @@ const Slick = () => {
     slidesToScroll: 1,
   };
   return (
-    <div className='w-full max-w-full overflow-hidden h-[200px] md:h-[400px] lg:h-[500px] mb-6'>
+    <div className='w-full max-w-full px-auto overflow-hidden h-[200px] md:h-[400px] lg:h-[500px] mb-6'>
     <Slider {...settings} className=''>
       <div className='h-[200px] md:h-[400px] lg:h-[500px]'> 
         <img src={image1} className='w-full h-full object-cover object-center'/>
