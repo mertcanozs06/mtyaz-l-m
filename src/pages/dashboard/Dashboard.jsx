@@ -53,7 +53,10 @@ const auth = getAuth();
                              </button>
                              
                              
-                             <button onClick={()=> {
+                             <button
+                             className='border-2 border-red-800 cursor-pointer p-2 text-amber-500'  
+                             
+                             onClick={()=> {
                                 const userOut = signOut(auth)
                                  if (userOut) {
                                    navigate("/") 
