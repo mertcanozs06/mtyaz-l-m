@@ -32,7 +32,7 @@ const Login = () => {
    // Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
-
+   
    setError(null);
   try {
     const auth = getAuth();

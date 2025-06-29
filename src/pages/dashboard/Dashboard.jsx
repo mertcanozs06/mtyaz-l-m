@@ -1,12 +1,18 @@
 import React, { useEffect, useState} from 'react'
-import { Outlet, useParams, useNavigate} from 'react-router-dom'
+import { Outlet, useParams, useNavigate, NavLink} from 'react-router-dom'
 import DashboardLogo from './components/dashboard-logo/DashboardLogo'
 import { XMarkIcon } from '@heroicons/react/16/solid'
 import { Bars3Icon } from '@heroicons/react/16/solid'
 import DashboardNavbar from './components/dashboard-navbar/DashboardNavbar'
 import { onAuthStateChanged } from 'firebase/auth'
 import { auth } from '../../qrmenusistem'
+import { getAuth, signOut } from "firebase/auth";
 const Dashboard = () => {
+  
+
+const auth = getAuth();
+
+
     const [isOpen, setIsOpen] = useState(false); // Hamburger menü aç/kapa durumu
      
        const toggleMenu = () => {
@@ -27,11 +33,20 @@ const Dashboard = () => {
     return () => unsubscribe();
    }, [uid,navigate]);
    
+   function logout(auth) {
+     signOut(auth)
+  .then(() => {
+    console.log("Oturum sonlandırıldı.");
+  })
+  .catch((error) => {
+    console.error("Çıkış hatası:", error);
+  });         
+   }
      
   return (
-    <div className='w-full h-screen flex flex-row '>
-        <div className='w-48 h-full flex flex-col gap-5 '>
-             <div className="flex items-center justify-between px-3">
+    <div className='w-full h-screen flex md:flex-row flex-col '>
+        <div className='md:w-48 w-full h-30 flex flex-col gap-5 '>
+             <div className="flex items-center justify-between w-full h-10">
             <DashboardLogo/>
             <button
                                className=" block md:hidden focus:outline-none "
@@ -44,12 +59,19 @@ const Dashboard = () => {
                                  <Bars3Icon className="w-6 h-6" />
                                )}
                              </button>
+                             <NavLink to="/">
+                             <button onClick={logout(auth)}>
+                                   LogOut
+                             </button>
+                             </NavLink>
                              </div>
             <DashboardNavbar isOpen={isOpen}/>
  
         </div>
 
-        <div className='flex-1 h-full ml-10 '>
+        
+
+        <div className='flex-1 h-full md:ml-10 ml-0 '>
            <Outlet/>
         </div>
     </div>

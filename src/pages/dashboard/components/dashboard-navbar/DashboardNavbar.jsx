@@ -2,9 +2,9 @@ import React from 'react'
 import { NavLink } from 'react-router-dom'
 const DashboardNavbar = ({isOpen}) => {
   return (
-    <div className={`${isOpen ? 'block' : 'hidden'} md:block z-10 h-full items-center gap-6 `}
+    <div className={`${isOpen ? 'block' : 'hidden'} md:block  z-10  h-10 items-center gap-6 `}
         > 
-        <ul className="flex flex-col gap-2">
+        <ul className="flex  md:flex-col flex-row overflow-x-scroll   gap-2">
           
              <NavLink to='digital-menu'
                 className={({ isActive }) =>
@@ -12,7 +12,7 @@ const DashboardNavbar = ({isOpen}) => {
                 }
                  // Mobil menüde tıklanınca kapanır    
              >
-              <li className='border border-amber-300 p-1   hover:bg-emerald-600 rounded-xl cursor-pointer'>
+              <li className='border border-amber-300 p-1 md:w-48 w-30      hover:bg-emerald-600 rounded-xl cursor-pointer'>
               QR MENÜ
               </li>
              </NavLink>
