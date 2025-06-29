@@ -36,9 +36,9 @@ const auth = getAuth();
    
      
   return (
-    <div className='w-full h-screen flex md:flex-row flex-col '>
+    <div className='w-full h-screen flex md:flex-row flex-col  relative'>
         <div className='md:w-48 w-full h-30 flex flex-col gap-5 '>
-             <div className="flex items-center justify-between w-full h-10 md:px-0 md:py-0 px-3 py-3">
+             <div className="flex items-center justify-between w-full h-10 md:px-0 md:py-0 px-1 py-1">
             <DashboardLogo/>
             <button
                                className=" block md:hidden focus:outline-none "
@@ -54,7 +54,7 @@ const auth = getAuth();
                              
                              
                              <button
-                             className='border-2 border-red-800 cursor-pointer p-2 text-amber-500'  
+                             className='border-2 md:absolute right-0 top-2 border-red-800 cursor-pointer px-2 rounded-xl md:hover:bg-transparent hover:bg-green-500 text-amber-500'  
                              
                              onClick={()=> {
                                 const userOut = signOut(auth)

@@ -3,7 +3,7 @@ import React from 'react'
 const RegisterBilgi = () => {
   return (
     <div className='text-center'>
-        <span>Hala Üye Değil Misiniz?  <a href="/register">Şimdi Kaydolun</a></span>
+        <span>Üye Misiniz? <a href="/login">Giriş Yap </a></span>
     </div>
   )
 }
