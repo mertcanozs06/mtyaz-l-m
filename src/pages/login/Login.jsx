@@ -38,7 +38,9 @@ const Login = () => {
     const auth = getAuth();
     const userCredential = await signInWithEmailAndPassword(auth, formData.email, formData.password)
     const userId = userCredential.user.uid;
+    console.log('User ID:', userId);
    navigate(`/dashboard/${userId}`);
+   console.log('Navigate çağrıldı');
     
   } catch (error) {
      const errorCode = error.code ;

@@ -33,15 +33,7 @@ const auth = getAuth();
     return () => unsubscribe();
    }, [uid,navigate]);
    
-   function logout(auth) {
-     signOut(auth)
-  .then(() => {
-    console.log("Oturum sonlandırıldı.");
-  })
-  .catch((error) => {
-    console.error("Çıkış hatası:", error);
-  });         
-   }
+   
      
   return (
     <div className='w-full h-screen flex md:flex-row flex-col '>
@@ -59,11 +51,7 @@ const auth = getAuth();
                                  <Bars3Icon className="w-6 h-6" />
                                )}
                              </button>
-                             <NavLink to="/">
-                             <button onClick={logout(auth)}>
-                                   LogOut
-                             </button>
-                             </NavLink>
+                             
                              </div>
             <DashboardNavbar isOpen={isOpen}/>
  
