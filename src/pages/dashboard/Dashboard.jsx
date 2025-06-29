@@ -38,7 +38,7 @@ const auth = getAuth();
   return (
     <div className='w-full h-screen flex md:flex-row flex-col '>
         <div className='md:w-48 w-full h-30 flex flex-col gap-5 '>
-             <div className="flex items-center justify-between w-full h-10">
+             <div className="flex items-center justify-between w-full h-10 px-3 py-3">
             <DashboardLogo/>
             <button
                                className=" block md:hidden focus:outline-none "
