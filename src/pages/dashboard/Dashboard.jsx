@@ -38,7 +38,7 @@ const auth = getAuth();
   return (
     <div className='w-full h-screen flex md:flex-row flex-col '>
         <div className='md:w-48 w-full h-30 flex flex-col gap-5 '>
-             <div className="flex items-center justify-between w-full h-10 px-3 py-3">
+             <div className="flex items-center justify-between w-full h-10 md:px-0 md:py-0 px-3 py-3">
             <DashboardLogo/>
             <button
                                className=" block md:hidden focus:outline-none "
@@ -52,6 +52,21 @@ const auth = getAuth();
                                )}
                              </button>
                              
+                             
+                             <button onClick={()=> {
+                                const userOut = signOut(auth)
+                                 if (userOut) {
+                                   navigate("/") 
+                                 }
+                                 else {
+                                   console.log("Çıkışta hata oldu...");
+                                 }
+                                                              
+                             }}>
+                                 Çıkış Yap
+                             </button>
+                            
+
                              </div>
             <DashboardNavbar isOpen={isOpen}/>
  
