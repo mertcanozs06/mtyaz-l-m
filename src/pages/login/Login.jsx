@@ -11,6 +11,7 @@ import LoginDikkat from '../../components/login/login-dikkat/LoginDikkat';
 import LoginButton from '../../components/login/login-button/LoginButton';
 import LoginBilgi from '../../components/login/login-bilgi/LoginBilgi';
 
+
 const Login = () => {
   const [formData, setFormData] = useState({
     email: '',
@@ -19,7 +20,7 @@ const Login = () => {
 
   const { login } = useContext(AuthContext);
   const navigate = useNavigate();
-
+const apiUrl = import.meta.env.VITE_API_URL;
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({
@@ -31,7 +32,7 @@ const Login = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const response = await fetch('http://localhost:5000/api/auth/login', {
+      const response = await fetch(`${apiUrl}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
