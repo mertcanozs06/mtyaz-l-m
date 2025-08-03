@@ -13,6 +13,7 @@ import RegisterButton from '../../components/register/register-button/RegisterBu
 import RegisterBilgi from '../../components/register/register-bilgi/RegisterBilgi'
 import RegisterRestaurantName from '../../components/register/register-restaurant-name/RegisterRestaurantName'
 import { useNavigate } from 'react-router-dom'
+const apiUrl = import.meta.env.VITE_API_URL;
 
 
 const Register = () => {
@@ -47,7 +48,7 @@ const Register = () => {
       return;
     }
     try {
-      const res = await fetch('http://localhost:5000/api/auth/register', {
+      const res = await fetch(`${apiUrl}/api/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ restaurantName, email, password }),
