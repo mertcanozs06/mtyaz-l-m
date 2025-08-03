@@ -1,79 +1,95 @@
-import React from 'react'
-import { useState  } from 'react'
-import { useNavigate } from 'react-router-dom'
-import LoginLogo from '../../components/login/login-logo/LoginLogo'
-import LoginHeader from '../../components/login/login-header/LoginHeader'
-import LoginEmail from '../../components/login/login-email/LoginEmail'
-import LoginPassword from '../../components/login/login-password/LoginPassword'
-import LoginDikkat from '../../components/login/login-dikkat/LoginDikkat'
-import LoginButton from '../../components/login/login-button/LoginButton'
-import LoginBilgi from '../../components/login/login-bilgi/LoginBilgi'
-import { getAuth, signInWithEmailAndPassword } from "firebase/auth";
-const Login = () => {
-   
-  const [formData, setFormData] = useState({
-      email: '',
-      password: '',
-    });
-    const [error, setError] = useState(null);
-    const navigate = useNavigate();
+import React, { useState, useContext } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { jwtDecode } from 'jwt-decode'; // 🔹 Bunu eklemeyi UNUTMA
+import { AuthContext } from '../../context/AuthContext';
 
-    
-     // Handle input changes
+import LoginLogo from '../../components/login/login-logo/LoginLogo';
+import LoginHeader from '../../components/login/login-header/LoginHeader';
+import LoginEmail from '../../components/login/login-email/LoginEmail';
+import LoginPassword from '../../components/login/login-password/LoginPassword';
+import LoginDikkat from '../../components/login/login-dikkat/LoginDikkat';
+import LoginButton from '../../components/login/login-button/LoginButton';
+import LoginBilgi from '../../components/login/login-bilgi/LoginBilgi';
+
+const Login = () => {
+  const [formData, setFormData] = useState({
+    email: '',
+    password: '',
+  });
+
+  const { login } = useContext(AuthContext);
+  const navigate = useNavigate();
+
   const handleChange = (e) => {
-    const { name, value, type, checked } = e.target;
+    const { name, value } = e.target;
     setFormData((prev) => ({
       ...prev,
-      [name]: type === 'checkbox' ? checked : value,
+      [name]: value,
     }));
   };
 
-
-   // Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
-   
-   setError(null);
-  try {
-    const auth = getAuth();
-    const userCredential = await signInWithEmailAndPassword(auth, formData.email, formData.password)
-    const userId = userCredential.user.uid;
-    console.log('User ID:', userId);
-   navigate(`/dashboard/${userId}`);
-   console.log('Navigate çağrıldı');
-    
-  } catch (error) {
-     const errorCode = error.code ;
-     const errorMessage = error.message;
-  }
+    try {
+      const response = await fetch('http://localhost:5000/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData),
+      });
 
-    console.log('Form submitted:', formData);
-    // TODO: Send data to API or perform other actions
+      const data = await response.json();
+
+      if (!response.ok) throw new Error(data.message);
+
+      const decoded = jwtDecode(data.token);
+      console.log('Decoded token:', decoded); // ✅ Debug için geçici log
+
+      login(
+        {
+          email: decoded.email,
+          role: decoded.role,
+          restaurant_id: decoded.restaurant_id,
+        },
+        data.token
+      );
+
+      // Rol bazlı yönlendirme
+      if (decoded.role === 'waiter') {
+        navigate(`/dashboard/${decoded.restaurant_id}/waiter`);
+      } else if (decoded.role === 'kitchen') {
+        navigate(`/dashboard/${decoded.restaurant_id}/kitchen`);
+      } else {
+        navigate(`/dashboard/${decoded.restaurant_id}`);
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      alert('Giriş başarısız: ' + error.message);
+    }
   };
-  
+
   return (
-  <div className='w-full min-h-screen flex items-center justify-center'>
-      <div className='w-full max-w-md items-center justify-center p-10 text-white bg-sky-500'>
+    <div className="w-full min-h-screen flex items-center justify-center">
+      <div className="w-full max-w-md items-center justify-center p-10 text-white bg-sky-500">
         <form onSubmit={handleSubmit}>
-            <LoginLogo/>   
-            <LoginHeader/>
-            <LoginEmail
+          <LoginLogo />
+          <LoginHeader />
+          <LoginEmail
             value={formData.email}
             onChange={handleChange}
-            name='email'
-            />
-            <LoginPassword
+            name="email"
+          />
+          <LoginPassword
             value={formData.password}
             onChange={handleChange}
-            name='password'
-            />
-            <LoginDikkat/>
-            <LoginButton/>
-            <LoginBilgi/>
+            name="password"
+          />
+          <LoginDikkat />
+          <LoginButton />
+          <LoginBilgi />
         </form>
-        </div>
+      </div>
     </div>
-  )
-}
+  );
+};
 
-export default Login
+export default Login;

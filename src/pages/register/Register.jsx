@@ -11,12 +11,12 @@ import RegisterPasswordRepeat from '../../components/register/register-password-
 import RegisterMetin from '../../components/register/register-metin/RegisterMetin'
 import RegisterButton from '../../components/register/register-button/RegisterButton'
 import RegisterBilgi from '../../components/register/register-bilgi/RegisterBilgi'
-import {  createUserWithEmailAndPassword } from "firebase/auth";
-import { auth } from '../../qrmenusistem'
+import RegisterRestaurantName from '../../components/register/register-restaurant-name/RegisterRestaurantName'
+import { useNavigate } from 'react-router-dom'
 
 
 const Register = () => {
-
+ 
   const [formData, setFormData] = useState({
     businessAd: '',
     ad: '',
@@ -25,7 +25,9 @@ const Register = () => {
     password: '',
     repeatPassword: '',
     check: false,
+    restaurant_name:''
   });
+  const navigate = useNavigate();
 
    // Handle input changes
   const handleChange = (e) => {
@@ -44,15 +46,23 @@ const Register = () => {
       alert('Şifreler Uyuşmuyor! Lütfen Doğru Şifre Giriniz...');
       return;
     }
-
-     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
-      console.log('Kullanıcı oluşturuldu:', userCredential.user);
-    } catch (error) {
-      console.error('Hata:', error.code, error.message);
+    try {
+      const res = await fetch('http://localhost:5000/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ restaurantName, email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+      login(
+        { email, role: 'admin', restaurant_id: data.restaurant_id },
+        data.token
+      );
+      navigate(`/dashboard/${data.restaurant_id}`);
+    } catch (err) {
+      alert('Kayıt olunamadı: ' + err.message);
     }
-
-        // Add more validation as needed (e.g., email format, required fields)
+   // Add more validation as needed (e.g., email format, required fields)
     console.log('Form submitted:', formData);
     // TODO: Send data to API or perform other actions
   };
@@ -78,6 +88,14 @@ const Register = () => {
             onChange={handleChange}
             name="email"
             />
+
+            <RegisterRestaurantName
+             value={formData.restoranİsmi}
+             onChange={handleChange}
+             name="restoranİsmi"           
+            />
+
+            
             <RegisterTel
             value={formData.tel}
             onChange={handleChange}
