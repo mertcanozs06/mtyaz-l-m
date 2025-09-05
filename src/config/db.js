@@ -10,7 +10,7 @@ const dbConfig = {
   database: process.env.DB_NAME,
   options: {
     encrypt: true,
-    trustServerCertificate: true
+    trustServerCertificate: true,
   }
 };
 
@@ -18,4 +18,4 @@ const pool = new sql.ConnectionPool(dbConfig);
 const poolConnect = pool.connect();
 
 export default pool;
-export { sql, poolConnect };
+export { sql, poolConnect  };

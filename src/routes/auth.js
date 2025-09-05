@@ -32,6 +32,8 @@ router.post('/register', async (req, res) => {
     );
 
     res.status(201).json({ token, restaurant_id });
+
+    
   } catch (err) {
     res.status(500).json({ message: 'Error registering', error: err.message });
   }
@@ -56,6 +58,15 @@ router.post('/login', async (req, res) => {
   process.env.JWT_SECRET || 'your_jwt_secret',
   { expiresIn: '1h' }
 );
+// 30 günlük ücretsiz kontrol
+const createdAt = new Date(user.createdAt);
+  const now = new Date();
+  const diffDays = Math.floor((now - createdAt) / (1000 * 60 * 60 * 24));
+
+  if (diffDays > 30) {
+    return res.status(403).send('Ücretsiz deneme süreniz sona erdi');
+  }
+  
     res.json({ token, restaurant_id: user.restaurant_id });
   } catch (err) {
     res.status(500).json({ message: 'Error logging in', error: err.message });

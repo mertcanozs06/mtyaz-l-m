@@ -5,7 +5,7 @@ import Home from './pages/home/Home';
 import Kimlerİçin from "./pages/kimleriçin/Kimlerİçin";
 import Özellikler from './pages/özelllikler/Özellikler';
 import About from './pages/about/About';
-import Fiyatlar from "./pages/fiyatlar/Fiyatlar";
+import Fiyatlar from "./pages/fiyatlar/Fiyatlar.jsx";
 import Ortaklıklar from "./pages/ortaklık/Ortaklıklar";
 import Contact from './pages/contact/Contact';
 import { AuthProvider } from './context/AuthContext.jsx';

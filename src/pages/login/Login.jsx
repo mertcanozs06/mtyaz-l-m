@@ -18,9 +18,11 @@ const Login = () => {
     password: '',
   });
 
+  const [errorMessage, setErrorMessage] = useState('');
+
   const { login } = useContext(AuthContext);
   const navigate = useNavigate();
-const apiUrl = import.meta.env.VITE_API_URL;
+  
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({
@@ -32,7 +34,7 @@ const apiUrl = import.meta.env.VITE_API_URL;
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const response = await fetch(`${apiUrl}/api/auth/login`, {
+      const response = await fetch('http://localhost:5000/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
@@ -40,7 +42,16 @@ const apiUrl = import.meta.env.VITE_API_URL;
 
       const data = await response.json();
 
+      if (response.status === 403 && data.message.includes("Ücretsiz deneme süreniz sona erdi")) {
+      setErrorMessage('Ücretsiz deneme süreniz sona erdi. Kayıt sayfasına yönlendiriliyorsunuz...');
+      setTimeout(() => {
+        navigate('/register');
+      }, 3000); // 3 saniye sonra yönlendir
+      return; // Devam etmesin
+    }
+
       if (!response.ok) throw new Error(data.message);
+
 
       const decoded = jwtDecode(data.token);
       console.log('Decoded token:', decoded); // ✅ Debug için geçici log
@@ -72,6 +83,12 @@ const apiUrl = import.meta.env.VITE_API_URL;
     <div className="w-full min-h-screen flex items-center justify-center">
       <div className="w-full max-w-md items-center justify-center p-10 text-white bg-sky-500">
         <form onSubmit={handleSubmit}>
+          {/* Bu satırı buraya ekle */}
+    {errorMessage && (
+      <div className="bg-red-100 text-red-600 p-4 rounded mb-4">
+        {errorMessage}
+      </div>
+    )}
           <LoginLogo />
           <LoginHeader />
           <LoginEmail

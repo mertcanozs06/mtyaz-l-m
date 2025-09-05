@@ -5,7 +5,7 @@ import { authMiddleware } from '../middleware/auth.js';
 const router = express.Router();
 
 // Masaları getir
-router.get('/:restaurant_id', authMiddleware(['admin', 'waiter']), async (req, res) => {
+router.get('/:restaurant_id', authMiddleware(['admin', 'waiter', 'kitchen']), async (req, res) => {
   try {
     const result = await pool.request()
       .input('restaurant_id', req.params.restaurant_id)

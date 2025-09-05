@@ -10,9 +10,22 @@ import discountRoutes from './routes/discount.js';
 import settingsRoutes from './routes/settings.js';
 import userRoutes from './routes/user.js';
 import restaurantRoutes from './routes/restaurant.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
 
+// ESM module için __dirname tanımı
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Express ve HTTP server kurulumu
 const app = express();
 const server = http.createServer(app);
+
+// Static uploads klasörü
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Socket.IO kurulumu
 const io = new Server(server, {
   cors: {
     origin: 'http://localhost:5173',
@@ -30,10 +43,10 @@ app.use(
   })
 );
 
-// Middleware
+// Body parser middleware
 app.use(express.json());
 
-// Routes
+// API route'ları
 app.use('/api/auth', authRoutes);
 app.use('/api/order', orderRoutes);
 app.use('/api/menu', menuRoutes);
@@ -43,7 +56,11 @@ app.use('/api/settings', settingsRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/restaurant', restaurantRoutes);
 
-// Socket.IO bağlantısı
+
+// Statik dosya servisi için uploads klasörünü ekle (bir üst dizin)
+app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+
+// Socket.IO olayları
 io.on('connection', (socket) => {
   console.log('Bir istemci bağlandı:', socket.id);
 
@@ -65,6 +82,7 @@ io.on('connection', (socket) => {
   });
 });
 
+// Sunucuyu başlat
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`Sunucu ${PORT} portunda çalışıyor`);

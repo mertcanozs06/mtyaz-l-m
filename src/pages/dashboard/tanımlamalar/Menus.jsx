@@ -14,9 +14,9 @@ const Menus = () => {
   const [extraName, setExtraName] = useState('');
   const [extraPrice, setExtraPrice] = useState('');
   const [selectedMenuId, setSelectedMenuId] = useState(null);
+  const [image, setImage] = useState(null);
 
   useEffect(() => {
-    // Menüleri getir
     const fetchMenus = () => {
       fetch(`http://localhost:5000/api/menu/${restaurantId}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
@@ -31,7 +31,6 @@ const Menus = () => {
 
     fetchMenus();
 
-    // Socket.IO ile menü güncellemelerini dinle
     socket.on('menu-updated', () => {
       fetchMenus();
     });
@@ -57,25 +56,34 @@ const Menus = () => {
       alert('Lütfen menü adı ve fiyat girin.');
       return;
     }
+    const formData = new FormData();
+    formData.append('name', name);
+    formData.append('price', parseFloat(price));
+    formData.append('description', description);
+    formData.append('category', category);
+    if (image) formData.append('image', image);
+
     try {
+      console.log('Gönderilen veri:', { name, price, description, category, restaurantId, image });
       const res = await fetch(`http://localhost:5000/api/menu/${restaurantId}`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
           Authorization: `Bearer ${localStorage.getItem('token')}`,
         },
-        body: JSON.stringify({ name, price: parseFloat(price), description, category }),
+        body: formData,
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
-      setMenus([...menus, { id: data.id, name, price: parseFloat(price), description, category }]);
+      if (!res.ok) throw new Error(data.message || 'Bilinmeyen hata');
+      setMenus([...menus, { id: data.id, name, price: parseFloat(price), description, category, image_url: data.image_url }]);
       setName('');
       setPrice('');
       setDescription('');
       setCategory('');
+      setImage(null);
       alert('Menü eklendi!');
       socket.emit('menu-updated', { restaurant_id: restaurantId });
     } catch (err) {
+      console.error('Hata detayları:', err.message);
       alert('Menü eklenemedi: ' + err.message);
     }
   };
@@ -128,6 +136,28 @@ const Menus = () => {
     }
   };
 
+  const deleteMenu = async (menuId) => {
+    if (!window.confirm('Bu menüyü silmek istediğinizden emin misiniz?')) return;
+    try {
+      const res = await fetch(`http://localhost:5000/api/menu/${menuId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+      setMenus(menus.filter((menu) => menu.id !== menuId));
+      setExtras((prev) => {
+        const newExtras = { ...prev };
+        delete newExtras[menuId];
+        return newExtras;
+      });
+      alert('Menü silindi!');
+      socket.emit('menu-updated', { restaurant_id: restaurantId });
+    } catch (err) {
+      alert('Menü silinemedi: ' + err.message);
+    }
+  };
+
   return (
     <div className="p-4">
       <h3 className="text-xl font-semibold mb-4">Menü Tanımlama</h3>
@@ -164,6 +194,12 @@ const Menus = () => {
             value={category}
             onChange={(e) => setCategory(e.target.value)}
             placeholder="Kategori (örn: Pideler)"
+            className="p-2 border rounded-md"
+          />
+          <input
+            type="file"
+            accept="image/*"
+            onChange={(e) => setImage(e.target.files[0])}
             className="p-2 border rounded-md"
           />
           <button
@@ -228,6 +264,9 @@ const Menus = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {menus.filter((m) => (m.category || 'Genel') === category).map((menu) => (
                 <div key={menu.id} className="p-4 bg-white shadow-md rounded-md">
+                  {menu.image_url && (
+                    <img src={`http://localhost:5000${menu.image_url}`} alt={menu.name} className="w-full h-32 object-cover mb-2 rounded-md" />
+                  )}
                   <p className="text-lg font-semibold">{menu.name}</p>
                   <p className="text-gray-600">{menu.description}</p>
                   <p className="text-blue-600 font-bold">{menu.price} TL</p>
@@ -249,6 +288,12 @@ const Menus = () => {
                       <p className="text-gray-500">Ekstra malzeme yok.</p>
                     )}
                   </div>
+                  <button
+                    onClick={() => deleteMenu(menu.id)}
+                    className="mt-2 bg-red-500 text-white px-4 py-2 rounded-md hover:bg-red-600"
+                  >
+                    Menüyü Sil
+                  </button>
                 </div>
               ))}
             </div>

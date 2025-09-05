@@ -2,14 +2,14 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 
 const UserSettings = () => {
-  const { restaurantid } = useParams();
+  const { restaurantId } = useParams();
   const [users, setUsers] = useState([]);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState('waiter');
 
   useEffect(() => {
-    fetch(`http://localhost:5000/api/user/${restaurantid}`, {
+    fetch(`http://localhost:5000/api/user/${restaurantId}`, {
       headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
     })
       .then((res) => {
@@ -18,12 +18,12 @@ const UserSettings = () => {
       })
       .then((data) => setUsers(data))
       .catch((err) => alert('Kullanıcılar alınamadı: ' + err.message));
-  }, [restaurantid]);
+  }, [restaurantId]);
 
   const handleAddUser = async (e) => {
     e.preventDefault();
     try {
-      const res = await fetch(`http://localhost:5000/api/user/${restaurantid}`, {
+      const res = await fetch(`http://localhost:5000/api/user/${restaurantId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
