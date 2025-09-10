@@ -92,6 +92,7 @@ router.get('/:order_id/details', authMiddleware(['admin', 'waiter', 'kitchen']),
 
 // Siparişi onayla
 router.put('/:id/approve', authMiddleware(['admin']), async (req, res) => {
+  console.log('Approve order id:', req.params.id);  // Burada id geliyor mu kontrol et
   await poolConnect;
   try {
     await pool.request()
@@ -99,6 +100,7 @@ router.put('/:id/approve', authMiddleware(['admin']), async (req, res) => {
       .query('UPDATE Orders SET status = \'preparing\' WHERE id = @id');
     res.json({ message: 'Order approved' });
   } catch (err) {
+    console.error('Approve error:', err);
     res.status(500).json({ message: 'Error approving order', error: err.message });
   }
 });
@@ -297,6 +299,18 @@ router.post('/served', authMiddleware(['waiter']), async (req, res) => {
   } catch (err) {
     await transaction.rollback();
     res.status(500).json({ message: 'Servis kaydedilemedi', error: err.message });
+  }
+});
+
+router.get('/served/:order_id', authMiddleware(['waiter']), async (req, res) => {
+  await poolConnect;
+  try {
+    const result = await pool.request()
+      .input('order_id', sql.Int, req.params.order_id)
+      .query('SELECT menu_id FROM ServedOrders WHERE order_id = @order_id');
+    res.json(result.recordset);
+  } catch (err) {
+    res.status(500).json({ message: 'Servis edilenler alınamadı', error: err.message });
   }
 });
 

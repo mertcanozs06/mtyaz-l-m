@@ -1,27 +1,27 @@
 import React, { useState, useEffect } from 'react';
 
-const OrderModals = ({ table, orders, waiterEmail, onClose }) => {
+const OrderModals = ({ table, orders, waiterEmail, restaurantId, token, onClose }) => {
   const [orderDetails, setOrderDetails] = useState([]);
   const [servedItems, setServedItems] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  // Sipariş detaylarını ve servis edilenleri çek
   useEffect(() => {
     const fetchOrderDetails = async () => {
       try {
         setIsLoading(true);
         const details = [];
 
+        // Her sipariş için detayları çek
         for (const order of orders) {
-          const response = await fetch(`/api/orders/${order.id}/details`, {
+          const response = await fetch(`http://localhost:5000/api/order/${order.id}/details`, {
             headers: {
-              'Authorization': `Bearer ${localStorage.getItem('token')}`
-            }
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
           });
-
-          if (!response.ok) {
-            throw new Error(`Sipariş detayları çekilemedi: ${response.statusText}`);
-          }
+          if (!response.ok) throw new Error(`Sipariş detayları çekilemedi: ${response.statusText}`);
 
           const data = await response.json();
           details.push(
@@ -29,16 +29,51 @@ const OrderModals = ({ table, orders, waiterEmail, onClose }) => {
               order_id: order.id,
               menu_id: item.menu_id,
               menu_name: item.menu_name,
-              category: item.category,
-              price: (item.menu_price + (item.extra_price || 0)) * item.quantity,
               quantity: item.quantity,
               extra_name: item.extra_name,
+              extra_price: item.extra_price || 0,
+              menu_price: item.menu_price,
+              price: (item.menu_price + (item.extra_price || 0)) * item.quantity,
               is_prepared: item.is_prepared,
             }))
           );
+
+          // Servis edilen ürünleri çek (yeni endpoint)
+          const servedResponse = await fetch(
+            `http://localhost:5000/api/order/served/${order.id}`,
+            {
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+              },
+            }
+          );
+          if (servedResponse.ok) {
+            const servedData = await servedResponse.json();
+            setServedItems((prev) => [
+              ...prev,
+              ...servedData.map((item) => item.menu_id),
+            ]);
+          }
         }
 
-        setOrderDetails(details);
+        // Menülerden kategori bilgisi çek
+        const menuIds = [...new Set(details.map((item) => item.menu_id))];
+        const menuResponse = await fetch(`http://localhost:5000/api/menu/${restaurantId}`, {
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        if (!menuResponse.ok) throw new Error('Menü bilgileri çekilemedi');
+        const menus = await menuResponse.json();
+
+        const detailsWithCategory = details.map((detail) => {
+          const menu = menus.find((m) => m.id === detail.menu_id);
+          return { ...detail, category: menu ? menu.category : 'Bilinmeyen' };
+        });
+
+        setOrderDetails(detailsWithCategory);
         setError(null);
       } catch (error) {
         console.error('Sipariş detayları çekilirken hata:', error);
@@ -54,8 +89,9 @@ const OrderModals = ({ table, orders, waiterEmail, onClose }) => {
       setIsLoading(false);
       setOrderDetails([]);
     }
-  }, [orders]);
+  }, [orders, restaurantId, token]);
 
+  // Tek bir ürünü servis et
   const handleServeItem = async (detail) => {
     if (!detail.is_prepared) {
       alert('Bu ürün henüz hazırlanmadı!');
@@ -63,11 +99,11 @@ const OrderModals = ({ table, orders, waiterEmail, onClose }) => {
     }
 
     try {
-      const response = await fetch('/api/orders/served', {
+      const response = await fetch('http://localhost:5000/api/order/served', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           order_id: detail.order_id,
@@ -91,6 +127,7 @@ const OrderModals = ({ table, orders, waiterEmail, onClose }) => {
     }
   };
 
+  // Tümünü Servis Et
   const handleServeAll = async () => {
     if (orderDetails.some((detail) => !detail.is_prepared)) {
       alert('Bazı ürünler henüz hazırlanmadı!');
@@ -99,27 +136,28 @@ const OrderModals = ({ table, orders, waiterEmail, onClose }) => {
 
     try {
       const responses = await Promise.all(
-        orderDetails.map((detail) =>
-          fetch('/api/orders/served', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('token')}`
-            },
-            body: JSON.stringify({
-              order_id: detail.order_id,
-              menu_id: detail.menu_id,
-              category: detail.category,
-              price: detail.price,
-              waiter_email: waiterEmail,
-            }),
-          })
-        )
+        orderDetails
+          .filter((detail) => !servedItems.includes(detail.menu_id))
+          .map((detail) =>
+            fetch('http://localhost:5000/api/order/served', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                order_id: detail.order_id,
+                menu_id: detail.menu_id,
+                category: detail.category,
+                price: detail.price,
+                waiter_email: waiterEmail,
+              }),
+            })
+          )
       );
 
       if (responses.every((res) => res.ok)) {
         setServedItems(orderDetails.map((detail) => detail.menu_id));
-        onClose();
       } else {
         console.error('Tüm ürünler servis edilemedi');
         alert('Tüm ürünler servis edilemedi');
@@ -130,34 +168,36 @@ const OrderModals = ({ table, orders, waiterEmail, onClose }) => {
     }
   };
 
+  // Servisi Al (Siparişi kapat)
   const handleTakeService = async () => {
     if (orderDetails.some((detail) => !detail.is_prepared)) {
       alert('Bazı ürünler henüz hazırlanmadı!');
       return;
     }
+    if (servedItems.length !== orderDetails.length) {
+      alert('Tüm ürünler servis edilmeden sipariş kapatılamaz!');
+      return;
+    }
 
     try {
       const responses = await Promise.all(
-        orderDetails.map((detail) =>
-          fetch('/api/orders/served', {
-            method: 'POST',
+        orders.map((order) =>
+          fetch(`http://localhost:5000/api/order/${order.id}/close`, {
+            method: 'PUT',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('token')}`
+              Authorization: `Bearer ${token}`,
             },
             body: JSON.stringify({
-              order_id: detail.order_id,
-              menu_id: detail.menu_id,
-              category: detail.category,
-              price: detail.price,
-              waiter_email: waiterEmail,
+              payment_method: 'cash', // TODO: Kullanıcıdan alınabilir
+              meal_voucher_type: null,
+              discount_id: null,
             }),
           })
         )
       );
 
       if (responses.every((res) => res.ok)) {
-        setServedItems(orderDetails.map((detail) => detail.menu_id));
         onClose();
       } else {
         console.error('Servis alınamadı');
@@ -182,11 +222,17 @@ const OrderModals = ({ table, orders, waiterEmail, onClose }) => {
         ) : (
           <ul className="space-y-2">
             {orderDetails.map((detail) => (
-              <li key={`${detail.order_id}-${detail.menu_id}`} className="flex justify-between items-center">
+              <li
+                key={`${detail.order_id}-${detail.menu_id}`}
+                className="flex justify-between items-center"
+              >
                 <span>
-                  {detail.menu_name} {detail.extra_name ? `+ ${detail.extra_name}` : ''} 
-                  ({detail.category}) - {detail.price.toFixed(2)} TL (x{detail.quantity})
+                  {detail.menu_name} {detail.extra_name ? `+ ${detail.extra_name}` : ''} (
+                  {detail.category}) - {detail.price.toFixed(2)} TL (x{detail.quantity})
                   {!detail.is_prepared && <span className="text-red-500"> (Hazırlanmadı)</span>}
+                  {servedItems.includes(detail.menu_id) && (
+                    <span className="text-gray-400"> (Servis Edildi)</span>
+                  )}
                 </span>
                 {!servedItems.includes(detail.menu_id) && (
                   <button
@@ -204,22 +250,31 @@ const OrderModals = ({ table, orders, waiterEmail, onClose }) => {
 
         <div className="flex justify-between mt-4">
           <button
-            className="bg-blue-500 text-white px-4 py-2 rounded"
+            className={`bg-blue-500 text-white px-4 py-2 rounded ${
+              isLoading || orderDetails.length === 0 || servedItems.length === orderDetails.length
+                ? 'opacity-50 cursor-not-allowed'
+                : ''
+            }`}
             onClick={handleServeAll}
-            disabled={orderDetails.length === 0 || servedItems.length === orderDetails.length}
+            disabled={isLoading || orderDetails.length === 0 || servedItems.length === orderDetails.length}
           >
             Tümünü Servis Et
           </button>
           <button
-            className="bg-yellow-500 text-white px-4 py-2 rounded"
+            className={`bg-yellow-500 text-white px-4 py-2 rounded ${
+              isLoading || orderDetails.length === 0 || servedItems.length !== orderDetails.length
+                ? 'opacity-50 cursor-not-allowed'
+                : ''
+            }`}
             onClick={handleTakeService}
-            disabled={orderDetails.length === 0 || servedItems.length === orderDetails.length}
+            disabled={isLoading || orderDetails.length === 0 || servedItems.length !== orderDetails.length}
           >
             Servisi Al
           </button>
           <button
             className="bg-gray-500 text-white px-4 py-2 rounded"
             onClick={onClose}
+            disabled={isLoading}
           >
             Kapat
           </button>

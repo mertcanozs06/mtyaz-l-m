@@ -56,12 +56,9 @@ const Register = () => {
          }),
       });
       const data = await res.json();
+      console.log('Server response:', data);
       if (!res.ok) throw new Error(data.message);
-      login(
-        { email, role: 'admin', restaurant_id: data.restaurant_id },
-        data.token
-      );
-      navigate(`/dashboard/${data.restaurant_id}`);
+       alert('Kayıt Başarılı bir şekilde oluştu.')
     } catch (err) {
       alert('Kayıt olunamadı: ' + err.message);
     }
@@ -95,7 +92,7 @@ const Register = () => {
             <RegisterRestaurantName
              value={formData.restaurantName}
              onChange={handleChange}
-             name="restoranİsmi"           
+             name="restaurantName"           
             />
 
             

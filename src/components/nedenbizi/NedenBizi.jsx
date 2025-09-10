@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-
+import bizitercih from '../../../src/assets/Images/bizitercih.jpg'
+import bizitercih2 from '../../../src/assets/Images/bizitercih2.jpg'
+import bizitercih3 from '../../../src/assets/Images/bizitercih3.jpg'
 const NedenBizi = () => {
   // State ile manuel veri tanımlama
   const [sections, setSections] = useState([
@@ -7,19 +9,19 @@ const NedenBizi = () => {
       id: 1,
       title: 'Kaliteli Hizmet',
       description: 'Uzman ekibimizle her zaman en iyi hizmeti sunuyoruz.',
-      image: '/images/hizmet.jpg',
+      image: bizitercih,
     },
     {
       id: 2,
       title: 'Hızlı Teslimat',
       description: 'Siparişlerinizi en kısa sürede teslim ediyoruz.',
-      image: '/images/teslimat.jpg',
+      image: bizitercih2,
     },
     {
       id: 3,
       title: 'Müşteri Memnuniyeti',
       description: 'Müşterilerimizin memnuniyeti bizim önceliğimiz.',
-      image: '/images/memnuniyet.jpg',
+      image: bizitercih3,
     },
     {
       id: 4,
@@ -38,7 +40,7 @@ const NedenBizi = () => {
 
       {/* Dinamik Alt Başlıklar */}
       {sections.map((section) => (
-        <div key={section.id} className="flex flex-col sm:flex-row items-center mb-6">
+        <div key={section.id} className="flex flex-col sm:flex-row items-center mb-6 justify-center">
           <div className="w-full sm:w-1/2 mb-4 sm:mb-0">
             <h2 className="text-xl sm:text-2xl font-semibold text-gray-700 mb-2 text-left">
               {section.title}
@@ -47,11 +49,11 @@ const NedenBizi = () => {
               {section.description}
             </p>
           </div>
-          <div className="w-full sm:w-1/2 flex justify-center sm:justify-end">
+          <div className="w-full h-[250px] sm:h-auto sm:max-w-md sm:aspect-[4/3]">
             <img
               src={section.image}
               alt={section.title}
-              className="w-32 h-32 sm:w-40 sm:h-40 object-cover rounded-lg"
+             className="w-full h-full object-cover rounded-lg"
             />
           </div>
         </div>

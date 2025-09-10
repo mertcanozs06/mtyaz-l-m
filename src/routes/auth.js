@@ -64,7 +64,10 @@ const createdAt = new Date(user.createdAt);
   const diffDays = Math.floor((now - createdAt) / (1000 * 60 * 60 * 24));
 
   if (diffDays > 30) {
-    return res.status(403).send('Ücretsiz deneme süreniz sona erdi');
+    return res.status(403).json({
+    error: true,
+    message: 'Ücretsiz deneme süreniz sona erdi'
+  });
   }
   
     res.json({ token, restaurant_id: user.restaurant_id });
