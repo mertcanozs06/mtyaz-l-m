@@ -1,5 +1,6 @@
 import sql from 'mssql';
 import dotenv from 'dotenv';
+import { IDLE_FETCHER } from 'react-router-dom';
 
 dotenv.config();
 
@@ -9,9 +10,15 @@ const dbConfig = {
   server: process.env.DB_SERVER,
   database: process.env.DB_NAME,
   options: {
-    encrypt: true,
+    encrypt: false,
     trustServerCertificate: true,
-  }
+  },
+  pool: {
+    max:10,
+    min:0,
+    idleTimeoutMillis: 30000,
+    acquireTimeoutMillis:30000,
+  },
 };
 
 const pool = new sql.ConnectionPool(dbConfig);

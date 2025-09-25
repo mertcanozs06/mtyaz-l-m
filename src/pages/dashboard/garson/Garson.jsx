@@ -1,26 +1,22 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { useParams } from 'react-router-dom';
-import { jwtDecode } from 'jwt-decode';
 import OrderModals from './OrderModals';
+import { SocketContext } from '../../../context/SocketContext';
+import { AuthContext } from '../../../context/AuthContext';
 
 const Garson = () => {
   const { restaurantId } = useParams();
+  const { socket, isConnected } = useContext(SocketContext);
+  const { token, user } = useContext(AuthContext);
+
+  const waiterEmail = user?.email ?? null;
+
   const [tables, setTables] = useState([]);
   const [orders, setOrders] = useState({});
   const [selectedTable, setSelectedTable] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-
-  const ws = useRef(null); // WebSocket referansı
-
-  const token = localStorage.getItem('token');
-  let waiterEmail = null;
-  try {
-    waiterEmail = token ? jwtDecode(token).email : null;
-  } catch (err) {
-    console.error('Token çözümleme hatası:', err);
-  }
 
   // Masaları çek
   useEffect(() => {
@@ -51,9 +47,9 @@ const Garson = () => {
       setError('Restaurant ID bulunamadı');
       setIsLoading(false);
     }
-  }, [restaurantId, token]);
+  }, [restaurantId, token, waiterEmail]);
 
-  // Siparişleri çek (başlangıçta ve 30 sn'de bir)
+  // Siparişleri çek
   useEffect(() => {
     const fetchOrders = async () => {
       try {
@@ -64,10 +60,13 @@ const Garson = () => {
         const data = await response.json();
 
         const ordersByTable = {};
-        data.forEach((order) => {
-          if (!ordersByTable[order.table_id]) ordersByTable[order.table_id] = [];
-          ordersByTable[order.table_id].push(order);
-        });
+        data
+          .filter((order) => order.servedBy === null)
+          .forEach((order) => {
+            if (!ordersByTable[order.table_id]) ordersByTable[order.table_id] = [];
+            ordersByTable[order.table_id].push(order);
+          });
+
         setOrders(ordersByTable);
       } catch (error) {
         console.error('Siparişler çekilirken hata:', error);
@@ -80,60 +79,45 @@ const Garson = () => {
     return () => clearInterval(interval);
   }, [restaurantId, token]);
 
-  // 🔌 WebSocket bağlantısı
+  // 🔌 Socket bağlantısı ve sipariş güncellemesi
   useEffect(() => {
-    if (!restaurantId || !token) return;
+    if (!socket || !isConnected || !restaurantId) return;
 
-    const wsUrl = `ws://localhost:5000/ws/order/${restaurantId}`;
-    ws.current = new WebSocket(wsUrl);
+    socket.emit('join_waiter', restaurantId);
 
-    ws.current.onopen = () => {
-      console.log('WebSocket bağlantısı açıldı');
-    };
+    const handleOrderUpdate = (updatedOrder) => {
+      setOrders((prevOrders) => {
+        const updated = { ...prevOrders };
+        const tableId = updatedOrder.table_id;
 
-    ws.current.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data);
-        console.log('WebSocket mesajı:', message);
-
-        if (message.type === 'order_update') {
-          const updatedOrder = message.order;
-          setOrders((prevOrders) => {
-            const updatedOrders = { ...prevOrders };
-            const tableId = updatedOrder.table_id;
-            if (!updatedOrders[tableId]) updatedOrders[tableId] = [];
-
-            // Var olan siparişi güncelle veya yeni olarak ekle
-            const index = updatedOrders[tableId].findIndex((o) => o.id === updatedOrder.id);
-            if (index !== -1) {
-              updatedOrders[tableId][index] = updatedOrder;
-            } else {
-              updatedOrders[tableId].push(updatedOrder);
-            }
-
-            return updatedOrders;
-          });
+        // Sipariş garsona servis edildiyse listeden çıkar
+        if (updatedOrder.servedBy !== null) {
+          updated[tableId] = updated[tableId]?.filter((o) => o.id !== updatedOrder.id);
+          if (updated[tableId]?.length === 0) {
+            delete updated[tableId];
+          }
+        } else {
+          if (!updated[tableId]) updated[tableId] = [];
+          const idx = updated[tableId].findIndex((o) => o.id === updatedOrder.id);
+          if (idx !== -1) {
+            updated[tableId][idx] = updatedOrder;
+          } else {
+            updated[tableId].push(updatedOrder);
+          }
         }
-      } catch (err) {
-        console.error('WebSocket mesajı çözümleme hatası:', err);
-      }
+
+        return updated;
+      });
     };
 
-    ws.current.onerror = (error) => {
-      console.error('WebSocket hatası:', error);
-    };
-
-    ws.current.onclose = () => {
-      console.log('WebSocket bağlantısı kapatıldı');
-    };
+    socket.on('order_update', handleOrderUpdate);
 
     return () => {
-      if (ws.current) {
-        ws.current.close();
-      }
+      socket.off('order_update', handleOrderUpdate);
     };
-  }, [restaurantId, token]);
+  }, [socket, isConnected, restaurantId]);
 
+  // Modal aç/kapat işlemleri
   const openOrderModal = (table) => {
     setSelectedTable(table);
     setModalOpen(true);
@@ -144,20 +128,27 @@ const Garson = () => {
     setSelectedTable(null);
   };
 
+  const handleOrdersCleared = (tableId) => {
+    setOrders((prevOrders) => {
+      const updated = { ...prevOrders };
+      updated[tableId] = [];
+      return updated;
+    });
+  };
+
+  // Gerekli kontroller
   if (isLoading) return <div className="p-4 text-center">Yükleniyor...</div>;
   if (error) return <div className="p-4 text-center text-red-500">Hata: {error}</div>;
   if (!tables.length) return <div className="p-4 text-center">Bu restoranda masa bulunamadı.</div>;
   if (!waiterEmail)
     return <div className="p-4 text-center text-red-500">Garson email bulunamadı, lütfen giriş yapın.</div>;
 
+  // Arayüz
   return (
     <div className="grid grid-cols-3 gap-4 p-4">
       {tables.map((table) => {
         const tableOrders = orders[table.id] || [];
         const totalPrice = tableOrders.reduce((sum, order) => sum + order.total_price, 0);
-        const isTaken = tableOrders.some(
-          (order) => order.servedBy && order.servedBy !== waiterEmail
-        );
 
         return (
           <div key={table.id} className="bg-white p-4 rounded-lg shadow-md text-center">
@@ -165,14 +156,9 @@ const Garson = () => {
             {totalPrice > 0 ? (
               <>
                 <p className="text-red-500 font-semibold">{totalPrice.toFixed(2)} TL</p>
-                {!isTaken && (
-                  <button
-                    className="text-blue-500 underline"
-                    onClick={() => openOrderModal(table)}
-                  >
-                    Detaylar
-                  </button>
-                )}
+                <button className="text-blue-500 underline" onClick={() => openOrderModal(table)}>
+                  Detaylar
+                </button>
               </>
             ) : (
               <p>Sipariş yok</p>
@@ -180,14 +166,14 @@ const Garson = () => {
           </div>
         );
       })}
+
       {modalOpen && selectedTable && (
         <OrderModals
           table={selectedTable}
           orders={orders[selectedTable.id] || []}
-          waiterEmail={waiterEmail}
           restaurantId={restaurantId}
-          token={token}
           onClose={closeOrderModal}
+          onOrdersCleared={handleOrdersCleared}
         />
       )}
     </div>

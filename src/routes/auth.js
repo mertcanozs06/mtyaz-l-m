@@ -21,7 +21,6 @@ router.post('/register', async (req, res) => {
       .input('role', 'admin')
       .query(`
         INSERT INTO Users (restaurant_id, email, password, role)
-        OUTPUT INSERTED.id
         VALUES (@restaurant_id, @email, @password, @role)
       `);
 
@@ -36,6 +35,7 @@ router.post('/register', async (req, res) => {
     
   } catch (err) {
     res.status(500).json({ message: 'Error registering', error: err.message });
+    console.error('REGISTER ERROR:', err); // Sunucuda terminale detaylı log basar  
   }
 });
 

@@ -32,6 +32,7 @@ import Garson from "./pages/dashboard/garson/Garson.jsx";
 import Error from "./pages/error/Error.jsx";
 import { useEffect, useState } from "react";
 import { BsDisplay } from "react-icons/bs";
+
 function App() {
 
  
@@ -56,6 +57,7 @@ function App() {
               </PrivateRoute>
             }
           >
+             
             <Route path="orders" element={<Sipariş/>} />
             <Route path="operations" element={<İşlemler />} />
             <Route path="waiter" element={<Garson/>} />
