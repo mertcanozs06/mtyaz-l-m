@@ -29,6 +29,7 @@ import Kullanıcılar from "./pages/dashboard/kullanıcılar/Kullanıcılar.jsx"
 import Ayarlar from "./pages/dashboard/ayarlar/Ayarlar.jsx";
 import QRMenu from "./pages/qrmenu/QRMenu.jsx";
 import Garson from "./pages/dashboard/garson/Garson.jsx";
+import BranchAdd from "./pages/dashboard/branchadd/BranchAdd.jsx";
 import Error from "./pages/error/Error.jsx";
 import { useEffect, useState } from "react";
 import { BsDisplay } from "react-icons/bs";
@@ -71,6 +72,7 @@ function App() {
               <Route path="menus" element={<Menus />} />
               <Route path="discounts" element={<Discounts />} />
             </Route>
+             <Route path="branchadd" element={<BranchAdd/>} />
             <Route path="settings" element={<Ayarlar />}>
               <Route path="menu" element={<MenuSettings />} />
               <Route path="users" element={<UserSettings />} />

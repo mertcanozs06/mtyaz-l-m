@@ -16,6 +16,7 @@ const Navbar = () => {
     admin: [
       { name: 'QR Menü', path: `/dashboard/${restaurantId}/qrmenu` },
       { name: 'Tanımlamalar', path: `/dashboard/${restaurantId}/definitions` },
+      { name: 'Şube Ekleme', path: `/dashboard/${restaurantId}/branchadd` },
       { name: 'Siparişlerim', path: `/dashboard/${restaurantId}/orders` },
       {
         name: 'İşlemler',
