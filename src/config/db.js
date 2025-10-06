@@ -1,6 +1,5 @@
 import sql from 'mssql';
 import dotenv from 'dotenv';
-import { IDLE_FETCHER } from 'react-router-dom';
 
 dotenv.config();
 
@@ -23,6 +22,7 @@ const dbConfig = {
 
 const pool = new sql.ConnectionPool(dbConfig);
 const poolConnect = pool.connect();
+const poolPromise = poolConnect;
 
 export default pool;
-export { sql, poolConnect  };
+export { sql, poolConnect, poolPromise };

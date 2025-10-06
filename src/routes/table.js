@@ -1,43 +1,51 @@
 import express from 'express';
-import pool from '../config/db.js';
+import { poolPromise, sql } from '../config/db.js';
 import { authMiddleware } from '../middleware/auth.js';
 import QRCode from 'qrcode';
-import sql from 'mssql';
 
 const router = express.Router();
 
 // Masaları getir
 router.get('/:restaurant_id/:branch_id', authMiddleware(['admin', 'owner', 'waiter', 'kitchen']), async (req, res) => {
+  const transaction = (await poolPromise).transaction();
   try {
-    const result = await pool.request()
-      .input('restaurant_id', req.params.restaurant_id)
-      .input('branch_id', req.params.branch_id)
-      .query('SELECT id, region, table_number FROM Tables WHERE restaurant_id = @restaurant_id AND branch_id = @branch_id');
+    await transaction.begin();
+    const request = transaction.request();
+
+    const { restaurant_id, branch_id } = req.params;
+
+    const result = await request
+      .input('restaurant_id', sql.Int, parseInt(restaurant_id))
+      .input('branch_id', sql.Int, parseInt(branch_id))
+      .query('SELECT id, table_number FROM Tables WHERE restaurant_id = @restaurant_id AND branch_id = @branch_id');
+
+    await transaction.commit();
     res.json(result.recordset);
   } catch (err) {
+    await transaction.rollback();
     res.status(500).json({ message: 'Error fetching tables', error: err.message });
   }
 });
 
 // Masa ekle
 router.post('/:restaurant_id/:branch_id', authMiddleware(['admin', 'owner']), async (req, res) => {
-  const { table_number, region, table_count } = req.body;
-  const { restaurant_id, branch_id } = req.params;
-  const transaction = new sql.Transaction(pool);
+  const transaction = (await poolPromise).transaction();
   try {
     await transaction.begin();
-    const request = new sql.Request(transaction);
+    const request = transaction.request();
+
+    const { table_number, table_count } = req.body;
+    const { restaurant_id, branch_id } = req.params;
 
     for (let i = 1; i <= (table_count || 1); i++) {
       const num = table_count ? i : table_number;
       const exists = await request
-        .input('restaurant_id', restaurant_id)
-        .input('branch_id', branch_id)
-        .input('region', region)
-        .input('table_number', num)
+        .input('restaurant_id', sql.Int, parseInt(restaurant_id))
+        .input('branch_id', sql.Int, parseInt(branch_id))
+        .input('table_number', sql.Int, num)
         .query(`
           SELECT 1 FROM Tables
-          WHERE restaurant_id = @restaurant_id AND branch_id = @branch_id AND region = @region AND table_number = @table_number
+          WHERE restaurant_id = @restaurant_id AND branch_id = @branch_id AND table_number = @table_number
         `);
       if (exists.recordset.length > 0) {
         await transaction.rollback();
@@ -45,16 +53,21 @@ router.post('/:restaurant_id/:branch_id', authMiddleware(['admin', 'owner']), as
       }
 
       const tableResult = await request.query(`
-        INSERT INTO Tables (restaurant_id, branch_id, region, table_number)
+        INSERT INTO Tables (restaurant_id, branch_id, table_number)
         OUTPUT INSERTED.id
-        VALUES (@restaurant_id, @branch_id, @region, @table_number)
+        VALUES (@restaurant_id, @branch_id, @table_number)
       `);
       const table_id = tableResult.recordset[0].id;
 
-      const qrCodeUrl = await QRCode.toDataURL(`https://yourapp.com/qrmenu/${restaurant_id}/${branch_id}/${region}/${num}`);
+      // QR kodu: region artık QRCodes tablosunda tutuluyor; linkte parametre olarak masa numarası yeterli
+      const qrCodeUrl = await QRCode.toDataURL(`${process.env.APP_URL || 'https://yourapp.com'}/qrmenu/${restaurant_id}/${branch_id}/${num}`);
       await request
-        .input('table_id', table_id)
-        .input('qr_code_url', qrCodeUrl)
+        .input('restaurant_id', sql.Int, parseInt(restaurant_id))
+        .input('branch_id', sql.Int, parseInt(branch_id))
+        .input('region', sql.NVarChar, null)
+        .input('table_number', sql.Int, num)
+        .input('qr_code_url', sql.NVarChar, qrCodeUrl)
+        .input('table_id', sql.Int, table_id)
         .query(`
           INSERT INTO QRCodes (restaurant_id, branch_id, region, table_number, qr_code_url, table_id)
           VALUES (@restaurant_id, @branch_id, @region, @table_number, @qr_code_url, @table_id)
@@ -71,13 +84,14 @@ router.post('/:restaurant_id/:branch_id', authMiddleware(['admin', 'owner']), as
 
 // Masa sil
 router.delete('/:table_id', authMiddleware(['admin', 'owner']), async (req, res) => {
-  const { table_id } = req.params;
-  const transaction = new sql.Transaction(pool);
+  const transaction = (await poolPromise).transaction();
   try {
     await transaction.begin();
-    const request = new sql.Request(transaction);
+    const request = transaction.request();
 
-    await request.input('table_id', table_id).query(`
+    const { table_id } = req.params;
+
+    await request.input('table_id', sql.Int, parseInt(table_id)).query(`
       DELETE FROM QRCodes WHERE table_id = @table_id;
       DELETE FROM ServedOrders WHERE order_id IN (SELECT id FROM Orders WHERE table_id = @table_id);
       DELETE FROM OrderDetails WHERE order_id IN (SELECT id FROM Orders WHERE table_id = @table_id);
