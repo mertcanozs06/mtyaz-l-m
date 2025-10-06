@@ -51,7 +51,7 @@ router.post('/register', async (req, res) => {
 
     // 2. Restoran oluştur
     const restaurantResult = await executeQuery(
-      `INSERT INTO Restaurants (name, address) 
+      `INSERT INTO Restaurants (name, adress) 
        OUTPUT INSERTED.id 
        VALUES (@name, @address)`,
       { name: restaurantName, address },
@@ -79,7 +79,7 @@ router.post('/register', async (req, res) => {
 
     // 4. Varsayılan şube oluştur
     const branchResult = await executeQuery(
-      `INSERT INTO Branches (restaurant_id, name, country, city, address, phone) 
+      `INSERT INTO Branches (restaurant_id, name, country, city, adress, phone) 
        OUTPUT INSERTED.id, INSERTED.name 
        VALUES (@restaurant_id, 'Varsayılan Şube', 'Türkiye', 'Varsayılan Şehir', @address, @phone)`,
       { restaurant_id, address, phone },
