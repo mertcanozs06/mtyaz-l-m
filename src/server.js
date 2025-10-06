@@ -9,6 +9,7 @@ import tableRoutes from './routes/table.js';
 import settingsRoutes from './routes/settings.js';
 import userRoutes from './routes/user.js';
 import restaurantRoutes from './routes/restaurant.js';
+import regionsRoutes from './routes/regions.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
@@ -47,6 +48,7 @@ app.use('/api/table', tableRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/restaurant', restaurantRoutes);
+app.use('/api/regions', regionsRoutes);
 
 app.use('/uploads', express.static(path.join(__dirname, '..', 'Uploads')));
 

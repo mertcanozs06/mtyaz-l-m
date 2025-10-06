@@ -46,6 +46,40 @@ router.get('/:restaurant_id/:branch_id', async (req, res) => {
   }
 });
 
+// Fallback: branch_id olmadan menüler (varsayılan ilk şube)
+router.get('/:restaurant_id', async (req, res) => {
+  const transaction = (await poolPromise).transaction();
+  try {
+    await transaction.begin();
+    const request = transaction.request();
+
+    const { restaurant_id } = req.params;
+
+    const branch = await request
+      .input('restaurant_id', sql.Int, parseInt(restaurant_id))
+      .query('SELECT TOP 1 id FROM Branches WHERE restaurant_id = @restaurant_id ORDER BY id');
+    if (branch.recordset.length === 0) {
+      await transaction.rollback();
+      return res.status(404).json({ message: 'Şube bulunamadı' });
+    }
+    const branch_id = branch.recordset[0].id;
+
+    const result = await request
+      .input('restaurant_id', sql.Int, parseInt(restaurant_id))
+      .input('branch_id', sql.Int, branch_id)
+      .query(`
+        SELECT id, name, price, description, category, image_url 
+        FROM Menus 
+        WHERE restaurant_id = @restaurant_id AND branch_id = @branch_id AND (is_deleted IS NULL OR is_deleted = 0)
+      `);
+    await transaction.commit();
+    res.json(result.recordset);
+  } catch (err) {
+    await transaction.rollback();
+    res.status(500).json({ message: 'Error fetching menus', error: err.message });
+  }
+});
+
 // Menü ekle
 router.post('/:restaurant_id/:branch_id', authMiddleware(['admin', 'owner']), upload.single('image'), async (req, res) => {
   const transaction = (await poolPromise).transaction();
@@ -143,6 +177,42 @@ router.get('/extras/:restaurant_id/:branch_id', async (req, res) => {
     let query = 'SELECT id, menu_id, name, price FROM Extras WHERE restaurant_id = @restaurant_id AND branch_id = @branch_id';
     request.input('restaurant_id', sql.Int, parseInt(restaurant_id));
     request.input('branch_id', sql.Int, parseInt(branch_id));
+    if (menu_id) {
+      request.input('menu_id', sql.Int, parseInt(menu_id));
+      query += ' AND menu_id = @menu_id';
+    }
+
+    const result = await request.query(query);
+    await transaction.commit();
+    res.json(result.recordset);
+  } catch (err) {
+    await transaction.rollback();
+    res.status(500).json({ message: 'Error fetching extras', error: err.message });
+  }
+});
+
+// Fallback: branch_id olmadan ekstralar (varsayılan ilk şube)
+router.get('/extras/:restaurant_id', async (req, res) => {
+  const transaction = (await poolPromise).transaction();
+  try {
+    await transaction.begin();
+    const request = transaction.request();
+
+    const { restaurant_id } = req.params;
+    const { menu_id } = req.query;
+
+    const branch = await request
+      .input('restaurant_id', sql.Int, parseInt(restaurant_id))
+      .query('SELECT TOP 1 id FROM Branches WHERE restaurant_id = @restaurant_id ORDER BY id');
+    if (branch.recordset.length === 0) {
+      await transaction.rollback();
+      return res.status(404).json({ message: 'Şube bulunamadı' });
+    }
+    const branch_id = branch.recordset[0].id;
+
+    let query = 'SELECT id, menu_id, name, price FROM Extras WHERE restaurant_id = @restaurant_id AND branch_id = @branch_id';
+    request.input('restaurant_id', sql.Int, parseInt(restaurant_id));
+    request.input('branch_id', sql.Int, branch_id);
     if (menu_id) {
       request.input('menu_id', sql.Int, parseInt(menu_id));
       query += ' AND menu_id = @menu_id';
