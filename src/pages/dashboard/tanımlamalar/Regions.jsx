@@ -1,24 +1,43 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useContext } from 'react';
 import { useParams } from 'react-router-dom';
+import { AuthContext } from '../../../context/AuthContext';
 
 const Regions = () => {
   const { restaurantId } = useParams();
+  const { token } = useContext(AuthContext);
   const [regions, setRegions] = useState([]);
   const [regionName, setRegionName] = useState('');
 
   useEffect(() => {
-    // Bölgeleri getiren bir endpoint eklenebilir
-    setRegions([]); // Şimdilik boş
-  }, [restaurantId]);
+    const fetchRegions = async () => {
+      try {
+        const res = await fetch(`http://localhost:5000/api/regions/${restaurantId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error('Bölgeler alınamadı');
+        const data = await res.json();
+        setRegions(data);
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    if (token && restaurantId) fetchRegions();
+  }, [restaurantId, token]);
 
   const addRegion = async () => {
     try {
-      // Bölge ekleme endpoint'i eklenebilir
-      setRegions([...regions, { id: Date.now(), name: regionName }]);
+      const res = await fetch(`http://localhost:5000/api/regions/${restaurantId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ name: regionName })
+      });
+      if (!res.ok) throw new Error('Bölge eklenemedi');
+      const data = await res.json();
+      setRegions((prev) => [...prev, data]);
       setRegionName('');
     } catch (err) {
       alert('Bölge eklenemedi: ' + err.message);
-    };
+    }
   };
 
   return (
