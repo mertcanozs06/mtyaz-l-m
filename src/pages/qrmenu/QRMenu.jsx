@@ -1,11 +1,14 @@
 import { useEffect, useState, useContext } from 'react';
 import { useParams } from 'react-router-dom';
+import { AuthContext } from '../../context/AuthContext';
 import { SocketContext } from '../../context/SocketContext';
 import { FiShoppingCart, FiUserPlus, FiTrash, FiMenu } from 'react-icons/fi';
 
 const QRMenu = () => {
-  const { restaurantId, tableNumber } = useParams();
+  const { restaurantId, branchId, tableNumber } = useParams();
+  const { user, selectedBranch } = useContext(AuthContext);
   const { socket, isConnected } = useContext(SocketContext);
+  const [errorMessage, setErrorMessage] = useState('');
 
   const [menus, setMenus] = useState([]);
   const [extras, setExtras] = useState({});
@@ -26,35 +29,37 @@ const QRMenu = () => {
   useEffect(() => {
     if (!socket || !isConnected) return;
 
-    socket.emit('join-restaurant', restaurantId);
+    socket.emit('join-restaurant', { restaurantId, branchId });
 
     const fetchMenus = async () => {
       try {
-        const res = await fetch(`http://localhost:5000/api/menu/${restaurantId}`);
+        const res = await fetch(`http://localhost:5000/api/menu/${restaurantId}/${branchId}`);
         if (!res.ok) throw new Error('Menüler alınamadı');
         const data = await res.json();
         setMenus(data);
       } catch (err) {
-        alert(err.message);
+        setErrorMessage(err.message);
       }
     };
 
     const fetchTables = async () => {
       setLoadingTables(true);
       try {
-        const res = await fetch(`http://localhost:5000/api/table/${restaurantId}`, {
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
-        });
+        const headers = {};
+        if (user) {
+          headers['Authorization'] = `Bearer ${localStorage.getItem('token')}`;
+        }
+        const res = await fetch(`http://localhost:5000/api/table/${restaurantId}/${branchId}`, { headers });
         if (!res.ok) throw new Error('Masalar yüklenemedi: ' + res.status);
         const data = await res.json();
         setTables(data);
         if (tableNumber) {
           const found = data.find(t => t.table_number === parseInt(tableNumber, 10));
           if (found) setSelectedTable(found.id.toString());
-          else alert('Geçersiz masa numarası!');
+          else setErrorMessage('Geçersiz masa numarası!');
         }
       } catch (err) {
-        alert(err.message);
+        setErrorMessage(err.message);
       } finally {
         setLoadingTables(false);
       }
@@ -72,7 +77,7 @@ const QRMenu = () => {
     return () => {
       socket.off('menu-updated', onMenuUpdated);
     };
-  }, [socket, isConnected, restaurantId, tableNumber]);
+  }, [socket, isConnected, restaurantId, branchId, tableNumber, user]);
 
   // Ekstra malzemeleri çek
   useEffect(() => {
@@ -83,7 +88,7 @@ const QRMenu = () => {
       for (const m of menus) {
         try {
           const res = await fetch(
-            `http://localhost:5000/api/menu/extras/${restaurantId}?menu_id=${m.id}`
+            `http://localhost:5000/api/menu/extras/${restaurantId}/${branchId}?menu_id=${m.id}`
           );
           if (!res.ok) throw new Error('Ekstra malzemeler alınamadı');
           const data = await res.json();
@@ -94,7 +99,7 @@ const QRMenu = () => {
       }
       setExtras(extrasData);
     })();
-  }, [menus, restaurantId]);
+  }, [menus, restaurantId, branchId]);
 
   // Menüden ekstra seçimi toggle
   const handleExtraToggle = (menuId, extraId) => {
@@ -111,7 +116,7 @@ const QRMenu = () => {
 
   const addToCart = (menuId) => {
     if (!activeCustomer) {
-      alert("Lütfen önce bir müşteri seçin!");
+      setErrorMessage('Lütfen önce bir müşteri seçin!');
       return;
     }
 
@@ -171,53 +176,66 @@ const QRMenu = () => {
 
   const handlePlaceOrder = async () => {
     if (!selectedTable) {
-      alert('Lütfen bir masa seçin!');
+      setErrorMessage('Lütfen bir masa seçin!');
       return;
     }
     const allItems = Object.values(cart).flat();
     if (!allItems.length) {
-      alert('Sepetiniz boş!');
+      setErrorMessage('Sepetiniz boş!');
       return;
     }
 
     try {
-      const res = await fetch(`http://localhost:5000/api/order`, {
+      const headers = {
+        'Content-Type': 'application/json',
+      };
+      if (user) {
+        headers['Authorization'] = `Bearer ${localStorage.getItem('token')}`;
+      }
+      const res = await fetch(`http://localhost:5000/api/order/${restaurantId}/${branchId}`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
+        headers,
         body: JSON.stringify({
           restaurant_id: restaurantId,
+          branch_id: branchId,
           table_id: selectedTable,
           items: allItems,
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Sipariş gönderilemedi');
+      if (!res.ok) {
+        if (res.status === 401) throw new Error('Yetkisiz erişim: Lütfen giriş yapın.');
+        if (res.status === 403) throw new Error('Bu şubeye erişim yetkiniz yok.');
+        throw new Error(data.message || 'Sipariş gönderilemedi');
+      }
       setCart({});
       setSelectedTable('');
       setCustomers([]);
       setActiveCustomer('');
       setIsCartOpen(false);
-      alert('Siparişiniz başarıyla alındı!');
-      socket.emit('order-placed', { restaurant_id: restaurantId });
+      setErrorMessage('Siparişiniz başarıyla alındı!');
+      socket.emit('order-placed', { restaurant_id: restaurantId, branch_id: branchId });
+      setTimeout(() => setErrorMessage(''), 3000);
     } catch (err) {
-      alert('Sipariş başarısız: ' + err.message);
+      setErrorMessage('Sipariş başarısız: ' + err.message);
     }
   };
 
   const addCustomer = () => {
     const name = newCustomerName.trim();
-    if (!name) return;
+    if (!name) {
+      setErrorMessage('Müşteri adı boş olamaz!');
+      return;
+    }
     if (customers.includes(name)) {
-      alert("Bu isim zaten ekli!");
+      setErrorMessage('Bu isim zaten ekli!');
       return;
     }
     setCustomers(prev => [...prev, name]);
     setNewCustomerName('');
     setShowAddCustomer(false);
     setActiveCustomer(name);
+    setErrorMessage('');
   };
 
   const removeCustomer = (name) => {
@@ -259,7 +277,7 @@ const QRMenu = () => {
         buttonPadding: 'px-4 sm:px-4 py-2 sm:py-2',
         buttonTextSize: 'text-lg sm:text-lg',
         marginBottom: 'mb-2 sm:mb-2',
-        extrasMargin: 'mb-4 sm:mb-4'
+        extrasMargin: 'mb-4 sm:mb-4',
       };
     } else {
       return {
@@ -274,13 +292,28 @@ const QRMenu = () => {
         buttonPadding: 'px-3 sm:px-4 py-1 sm:py-2',
         buttonTextSize: 'text-base sm:text-lg',
         marginBottom: 'mb-1 sm:mb-2',
-        extrasMargin: 'mb-3 sm:mb-4'
+        extrasMargin: 'mb-3 sm:mb-4',
       };
     }
   };
 
   return (
     <div className="min-h-screen p-4 sm:p-6 md:p-8 bg-gray-100 relative">
+      {errorMessage && (
+        <div
+          className={`fixed top-4 left-1/2 transform -translate-x-1/2 p-4 rounded-md shadow-md z-50 max-w-md ${
+            errorMessage.includes('başarıyla') ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
+          }`}
+        >
+          {errorMessage}
+          <button
+            className="absolute top-1 right-1 text-gray-500"
+            onClick={() => setErrorMessage('')}
+          >
+            ✕
+          </button>
+        </div>
+      )}
       <div className="sticky top-4 left-0 right-0 z-50 flex justify-between items-center px-4 sm:px-6 md:px-8 bg-gray-100">
         <button
           className="bg-white p-2 rounded-full shadow-md hover:bg-gray-100 transition"

@@ -1,170 +1,299 @@
-import { NavLink, useParams } from 'react-router-dom';
-import { useContext, useState } from 'react';
+import { NavLink, useParams, useNavigate } from 'react-router-dom';
+import { useContext, useState, useEffect } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 
 const Navbar = () => {
-  const { restaurantId } = useParams();
-  const { user, logout } = useContext(AuthContext);
+  const { restaurantId, branchId } = useParams();
+  const navigate = useNavigate();
+  const {
+    user,
+    branches,
+    selectedBranch,
+    setSelectedBranch,
+    package_type,
+    logout,
+  } = useContext(AuthContext);
 
   const [openDropdown, setOpenDropdown] = useState(null);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchBranches = async () => {
+      if (!user) {
+        setErrorMessage('Kullanıcı bilgisi eksik.');
+        setLoading(false);
+        return;
+      }
+      if (branches && branches.length > 0) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const res = await fetch(
+          `http://localhost:5000/api/restaurant/${user.restaurant_id}/branches`,
+          {
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem('token')}`,
+            },
+          }
+        );
+
+        if (!res.ok) {
+          if (res.status === 401) {
+            setErrorMessage('Oturumunuz sona erdi. Lütfen tekrar giriş yapın.');
+            logout();
+            navigate('/login');
+            return;
+          }
+          if (res.status === 403) throw new Error('Bu restorana erişim yetkiniz yok.');
+          throw new Error('Şubeler yüklenemedi');
+        }
+
+        const data = await res.json();
+        if (data.length > 0) {
+          const branchToSelect = branchId || data[0].id.toString();
+          setSelectedBranch(branchToSelect);
+        }
+      } catch (err) {
+        setErrorMessage(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    console.log('NavLink rendering:', { restaurantId, branchId, selectedBranch });
+    fetchBranches();
+  }, [user, branches, branchId, setSelectedBranch, logout, navigate]);
 
   const toggleDropdown = (name) => {
-    setOpenDropdown(openDropdown === name ? null : name);
+    setOpenDropdown((prev) => (prev === name ? null : name));
   };
+
+  const handleBranchChange = (e) => {
+    const newBranch = e.target.value;
+    setSelectedBranch(newBranch);
+    navigate(`/dashboard/${restaurantId}/${newBranch}`);
+  };
+
+  // === Menü Tanımları ===
+  const fullAdminNavItems = [
+    { name: 'QR Menü', path: 'qrmenu', packages: ['base', 'package2', 'premium'] },
+    { name: 'Tanımlamalar', path: 'definitions', packages: ['base', 'package2', 'premium'] },
+    { name: 'Şube Ekleme', path: 'branchadd', packages: ['package2', 'premium'] },
+    { name: 'Siparişlerim', path: 'orders', packages: ['package2', 'premium'] },
+    {
+      name: 'İşlemler',
+      path: 'operations',
+      packages: ['package2', 'premium'],
+      subItems: [
+        { name: 'İşlem 1', path: 'operations/1' },
+        { name: 'İşlem 2', path: 'operations/2' },
+      ],
+    },
+    {
+      name: 'Raporlar',
+      path: 'reports',
+      packages: ['premium'],
+      subItems: [
+        { name: 'GÜN SONU RAPORLARI', path: 'reports/daily' },
+        { name: 'STOK RAPORU', path: 'reports/stock' },
+      ],
+    },
+    { name: 'Kullanıcılar', path: 'users', packages: ['package2', 'premium'] },
+    { name: 'Garson', path: 'waiter', packages: ['base', 'package2', 'premium'] },
+    { name: 'Mutfak', path: 'kitchen', packages: ['base', 'package2', 'premium'] },
+    { name: 'Ayarlar', path: 'settings', packages: ['base', 'package2', 'premium'] },
+  ];
 
   const navItems = {
-    admin: [
-      { name: 'QR Menü', path: `/dashboard/${restaurantId}/qrmenu` },
-      { name: 'Tanımlamalar', path: `/dashboard/${restaurantId}/definitions` },
-      { name: 'Şube Ekleme', path: `/dashboard/${restaurantId}/branchadd` },
-      { name: 'Siparişlerim', path: `/dashboard/${restaurantId}/orders` },
-      {
-        name: 'İşlemler',
-        path: `/dashboard/${restaurantId}/operations`,
-        subItems: [
-          { name: 'İşlem 1', path: `/dashboard/${restaurantId}/operations/1` },
-          { name: 'İşlem 2', path: `/dashboard/${restaurantId}/operations/2` },
-        ],
-      },
-      {
-        name: 'Raporlar',
-        path: `/dashboard/${restaurantId}/reports`,
-        subItems: [
-          { name: 'GÜN SONU RAPORLARI', path: `/dashboard/${restaurantId}/reports/daily` },
-          { name: 'STOK RAPORU', path: `/dashboard/${restaurantId}/reports/stock` },
-        ],
-      },
-      { name: 'Kullanıcılar', path: `/dashboard/${restaurantId}/users` },
-      { name: 'Garson', path: `/dashboard/${restaurantId}/waiter` },
-      { name: 'Mutfak', path: `/dashboard/${restaurantId}/kitchen` },
-      { name: 'Ayarlar', path: `/dashboard/${restaurantId}/settings` },
+    owner: fullAdminNavItems,
+    admin: fullAdminNavItems,
+    waiter: [
+      { name: 'Garson', path: 'waiter', packages: ['base', 'package2', 'premium'] },
     ],
-    waiter: [{ name: 'Garson', path: `/dashboard/${restaurantId}/waiter` }],
-    kitchen: [{ name: 'Mutfak', path: `/dashboard/${restaurantId}/kitchen` }],
+    kitchen: [
+      { name: 'Mutfak', path: 'kitchen', packages: ['base', 'package2', 'premium'] },
+    ],
   };
 
-  if (user?.role === 'admin') {
+  const role = user?.role || 'waiter';
+  const roleNavItems = Array.isArray(navItems[role]) ? navItems[role] : [];
+  const availableNavItems = roleNavItems.filter(
+    (item) => !item.packages || item.packages.includes(package_type)
+  );
+
+  const buildLink = (subPath) => `/dashboard/${restaurantId}/${selectedBranch || branchId}/${subPath}`;
+
+  if (loading) {
     return (
-      <>
-        {/* Sidebar: sadece sm ve üstü */}
-        <nav className="bg-blue-600 text-white h-screen w-64 fixed top-0 left-0 p-6 overflow-auto hidden sm:flex flex-col justify-between">
-          <div>
-            {navItems.admin.map((item) => (
-              <div key={item.name} className="mb-2">
-                {item.subItems ? (
-                  <>
-                    <button
-                      onClick={() => toggleDropdown(item.name)}
-                      className="w-full text-left px-3 py-2 hover:bg-blue-700 rounded flex justify-between items-center"
-                    >
-                      <span>{item.name}</span>
-                      <span>{openDropdown === item.name ? '▲' : '▼'}</span>
-                    </button>
-                    {openDropdown === item.name && (
-                      <div className="ml-4 mt-1 flex flex-col space-y-1">
-                        {item.subItems.map((sub) => (
-                          <NavLink
-                            key={sub.path}
-                            to={sub.path}
-                            className={({ isActive }) =>
-                              `block px-3 py-1 rounded hover:bg-blue-500 ${
-                                isActive ? 'bg-blue-800 font-semibold' : ''
-                              }`
-                            }
-                          >
-                            {sub.name}
-                          </NavLink>
-                        ))}
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <NavLink
-                    to={item.path}
-                    className={({ isActive }) =>
-                      `block px-3 py-2 rounded hover:bg-blue-700 ${
-                        isActive ? 'bg-blue-800 font-semibold' : ''
-                      }`
-                    }
-                  >
-                    {item.name}
-                  </NavLink>
-                )}
-              </div>
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-xl text-gray-600">Yükleniyor...</div>
+      </div>
+    );
+  }
+
+  if (errorMessage) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="bg-red-100 text-red-600 p-4 rounded-md shadow-md max-w-md text-center">
+          {errorMessage}
+          <button
+            className="mt-4 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+            onClick={() => {
+              setErrorMessage('');
+              if (errorMessage.includes('Oturumunuz sona erdi')) {
+                logout();
+                navigate('/login');
+              }
+            }}
+          >
+            Kapat
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {/* Şube Seçimi */}
+      {branches && branches.length > 1 && (
+        <div className="p-4 bg-gray-100 sm:bg-transparent sm:p-0 sm:absolute sm:top-4 sm:left-4">
+          <label className="block text-sm font-medium mb-2 text-black sm:text-white">
+            Şube Seç
+          </label>
+          <select
+            value={selectedBranch || branchId || ''}
+            onChange={handleBranchChange}
+            className="w-full max-w-xs p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">Şube Seçin</option>
+            {branches.map((branch) => (
+              <option key={branch.id} value={branch.id.toString()}>
+                {branch.name}
+              </option>
             ))}
-          </div>
+          </select>
+        </div>
+      )}
 
-          <div>
-            <button
-              onClick={logout}
-              className="w-full bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-md"
-            >
-              Çıkış Yap
-            </button>
-          </div>
-        </nav>
-
-        {/* Mobil için yatay navbar: sadece sm altı */}
-        <nav className="bg-blue-600 text-white p-4 sm:hidden ml-0">
-          <div className="container mx-auto">
-            <div className="flex flex-row overflow-x-auto space-x-4 whitespace-nowrap pb-2">
-              {navItems.admin.map((item) => (
+      {/* Masaüstü Sidebar */}
+      <nav className="bg-blue-600 text-white h-screen w-64 fixed top-0 left-0 p-6 overflow-auto hidden sm:flex flex-col justify-between">
+        <div>
+          {availableNavItems.map((item) => (
+            <div key={item.name} className="mb-2">
+              {item.subItems ? (
+                <>
+                  <button
+                    onClick={() => toggleDropdown(item.name)}
+                    className="w-full text-left px-3 py-2 hover:bg-blue-700 rounded flex justify-between items-center"
+                  >
+                    <span>{item.name}</span>
+                    <span>{openDropdown === item.name ? '▲' : '▼'}</span>
+                  </button>
+                  {openDropdown === item.name && (
+                    <div className="ml-4 mt-1 flex flex-col space-y-1">
+                      {item.subItems.map((sub) => (
+                        <NavLink
+                          key={sub.path}
+                          to={buildLink(sub.path)}
+                          className={({ isActive }) =>
+                            `block px-3 py-1 rounded hover:bg-blue-500 ${
+                              isActive ? 'bg-blue-800 font-semibold' : ''
+                            }`
+                          }
+                        >
+                          {sub.name}
+                        </NavLink>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : (
                 <NavLink
-                  key={item.path}
-                  to={item.path}
+                  to={buildLink(item.path)}
+                  className={({ isActive }) =>
+                    `block px-3 py-2 rounded hover:bg-blue-700 ${
+                      isActive ? 'bg-blue-800 font-semibold' : ''
+                    }`
+                  }
+                >
+                  {item.name}
+                </NavLink>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <button
+          onClick={() => {
+            logout();
+            navigate('/login');
+          }}
+          className="w-full bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-md"
+        >
+          Çıkış Yap
+        </button>
+      </nav>
+
+      {/* Mobil Navbar */}
+      <nav className="bg-blue-600 text-white p-4 sm:hidden">
+        <div className="flex flex-row overflow-x-auto space-x-4 whitespace-nowrap pb-2">
+          {availableNavItems.map((item) => (
+            <div key={item.name} className="relative">
+              {item.subItems ? (
+                <>
+                  <button
+                    onClick={() => toggleDropdown(item.name)}
+                    className="hover:underline"
+                  >
+                    {item.name} {openDropdown === item.name ? '▲' : '▼'}
+                  </button>
+                  {openDropdown === item.name && (
+                    <div className="absolute z-50 bg-blue-600 text-white rounded-md mt-1 p-2 flex flex-col space-y-1">
+                      {item.subItems.map((sub) => (
+                        <NavLink
+                          key={sub.path}
+                          to={buildLink(sub.path)}
+                          className={({ isActive }) =>
+                            `block px-3 py-1 hover:underline ${isActive ? 'underline font-semibold' : ''}`
+                          }
+                        >
+                          {sub.name}
+                        </NavLink>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <NavLink
+                  to={buildLink(item.path)}
                   className={({ isActive }) =>
                     `hover:underline ${isActive ? 'underline font-semibold' : ''}`
                   }
                 >
                   {item.name}
                 </NavLink>
-              ))}
+              )}
             </div>
-
-            <div className="mt-4 flex-shrink-0">
-              <button
-                onClick={logout}
-                className="bg-red-500 text-white px-4 py-2 rounded-md hover:bg-red-600"
-              >
-                Çıkış Yap
-              </button>
-            </div>
-          </div>
-        </nav>
-      </>
-    );
-  }
-
-  // waiter ve kitchen rolleri için orijinal navbar
-  return (
-    <nav className="bg-blue-600 text-white p-4">
-      <div className="container mx-auto">
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center">
-          <div className="flex sm:flex-row flex-row overflow-x-auto space-x-4 sm:space-x-4 whitespace-nowrap pb-2 sm:pb-0">
-            {navItems[user?.role || 'waiter'].map((item) => (
-              <NavLink
-                key={item.path}
-                to={item.path}
-                className={({ isActive }) =>
-                  `hover:underline ${isActive ? 'underline font-semibold' : ''}`
-                }
-              >
-                {item.name}
-              </NavLink>
-            ))}
-          </div>
-
-          <div className="mt-4 sm:mt-0 flex-shrink-0">
-            <button
-              onClick={logout}
-              className="bg-red-500 text-white px-4 py-2 rounded-md hover:bg-red-600"
-            >
-              Çıkış Yap
-            </button>
-          </div>
+          ))}
         </div>
-      </div>
-    </nav>
+
+        <div className="mt-4">
+          <button
+            onClick={() => {
+              logout();
+              navigate('/login');
+            }}
+            className="bg-red-500 text-white px-4 py-2 rounded-md hover:bg-red-600"
+          >
+            Çıkış Yap
+          </button>
+        </div>
+      </nav>
+    </>
   );
 };
 

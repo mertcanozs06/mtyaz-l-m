@@ -1,11 +1,12 @@
 import { useEffect, useState, useContext } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, Navigate } from 'react-router-dom';
+import { AuthContext } from '../../../context/AuthContext';
 import { SocketContext } from '../../../context/SocketContext';
 
 const Menus = () => {
-  const { restaurantId } = useParams();
+  const { restaurantId, branchId } = useParams();
+  const { user, selectedBranch, package_type,token} = useContext(AuthContext);
   const { socket, isConnected } = useContext(SocketContext);
-
   const [menus, setMenus] = useState([]);
   const [extras, setExtras] = useState({});
   const [name, setName] = useState('');
@@ -18,49 +19,76 @@ const Menus = () => {
   const [selectedMenuId, setSelectedMenuId] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editingMenus, setEditingMenus] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [deleteExtraConfirm, setDeleteExtraConfirm] = useState(null);
 
+  // Menüleri ve ekstraları çek
   useEffect(() => {
-    const fetchMenus = () => {
-      fetch(`http://localhost:5000/api/menu/${restaurantId}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-      })
-        .then((res) => {
-          if (!res.ok) throw new Error('Failed to fetch menus');
-          return res.json();
-        })
-        .then((data) => {
-          setMenus(data);
-          data.forEach((menu) => {
-            fetchExtras(menu.id);
-          });
-        })
-        .catch((err) => {
-          alert('Menüler alınamadı: ' + err.message);
+    const fetchMenus = async () => {
+      if (!user || !selectedBranch) {
+        setErrorMessage('Kullanıcı veya şube bilgisi eksik.');
+        setLoading(false);
+        return;
+      }
+
+      if (user.restaurant_id !== parseInt(restaurantId)) {
+        setErrorMessage('Bu restorana erişim yetkiniz yok.');
+        setLoading(false);
+        return;
+      }
+
+      if (branchId !== selectedBranch) {
+        setErrorMessage('Seçilen şube geçersiz.');
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const res = await fetch(`http://localhost:5000/api/${restaurantId}/${branchId}/menus`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
         });
+        if (!res.ok) {
+          const errorData = await res.json();
+          if (res.status === 401) throw new Error('Lütfen giriş yapın.');
+          if (res.status === 403) throw new Error('Bu şubeye erişim yetkiniz yok.');
+          throw new Error(errorData.message || 'Menüler yüklenemedi.');
+        }
+        const data = await res.json();
+        setMenus(data);
+        data.forEach((menu) => fetchExtras(menu.id));
+        setLoading(false);
+      } catch (err) {
+        setErrorMessage(err.message);
+        setLoading(false);
+      }
     };
 
     fetchMenus();
 
     if (!isConnected || !socket) return;
-    const handleMenuUpdated = () => {
-      fetchMenus();
+    const handleMenuUpdated = (payload) => {
+      if (payload.restaurant_id === parseInt(restaurantId) && payload.branch_id === parseInt(branchId)) {
+        fetchMenus();
+      }
     };
     socket.on('menu-updated', handleMenuUpdated);
 
     return () => {
       socket.off('menu-updated', handleMenuUpdated);
     };
-  }, [restaurantId, socket, isConnected]);
+  }, [user, restaurantId, branchId, selectedBranch, socket, isConnected]);
 
   const fetchExtras = async (menuId) => {
     try {
       const res = await fetch(
-        `http://localhost:5000/api/menu/extras/${restaurantId}?menu_id=${menuId}`,
+        `http://localhost:5000/api/${restaurantId}/${branchId}/menus/extras?menu_id=${menuId}`,
         {
           headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
         }
       );
-      if (!res.ok) throw new Error('Failed to fetch extras');
+      if (!res.ok) throw new Error('Ekstra malzemeler yüklenemedi.');
       const data = await res.json();
       setExtras((prev) => ({ ...prev, [menuId]: data }));
     } catch (err) {
@@ -82,7 +110,7 @@ const Menus = () => {
 
   const addMenu = async () => {
     if (!name || !price) {
-      alert('Lütfen menü adı ve fiyat girin.');
+      setErrorMessage('Lütfen menü adı ve fiyat girin.');
       return;
     }
     const formData = new FormData();
@@ -93,16 +121,18 @@ const Menus = () => {
     if (image) formData.append('image', image);
 
     try {
-      const res = await fetch(`http://localhost:5000/api/menu/${restaurantId}`, {
+      const res = await fetch(`http://localhost:5000/api/${restaurantId}/${branchId}/menus`, {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-        },
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
         body: formData,
       });
+      if (!res.ok) {
+        const errorData = await res.json();
+        if (res.status === 401) throw new Error('Lütfen giriş yapın.');
+        if (res.status === 403) throw new Error('Bu şubeye erişim yetkiniz yok.');
+        throw new Error(errorData.message || 'Menü eklenemedi.');
+      }
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Bilinmeyen hata');
-
       setMenus((prev) => [
         ...prev,
         {
@@ -115,60 +145,62 @@ const Menus = () => {
         },
       ]);
       resetForm();
-      alert('Menü eklendi!');
-      socket?.emit('menu-updated', { restaurant_id: restaurantId });
+      socket?.emit('menu-updated', { restaurant_id: parseInt(restaurantId), branch_id: parseInt(branchId) });
     } catch (err) {
-      alert('Menü eklenemedi: ' + err.message);
+      setErrorMessage(err.message);
     }
   };
 
   const deleteMenu = async (menuId) => {
-    if (!window.confirm('Bu menüyü silmek istediğinizden emin misiniz?')) return;
     try {
-      const res = await fetch(`http://localhost:5000/api/menu/${menuId}`, {
+      const res = await fetch(`http://localhost:5000/api/${restaurantId}/${branchId}/menus/${menuId}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
-
+      if (!res.ok) {
+        const errorData = await res.json();
+        if (res.status === 401) throw new Error('Lütfen giriş yapın.');
+        if (res.status === 403) throw new Error('Bu şubeye erişim yetkiniz yok.');
+        throw new Error(errorData.message || 'Menü silinemedi.');
+      }
       setMenus((prev) => prev.filter((menu) => menu.id !== menuId));
       setExtras((prev) => {
         const copy = { ...prev };
         delete copy[menuId];
         return copy;
       });
-      alert('Menü silindi!');
-      socket?.emit('menu-updated', { restaurant_id: restaurantId });
+      setDeleteConfirm(null);
+      socket?.emit('menu-updated', { restaurant_id: parseInt(restaurantId), branch_id: parseInt(branchId) });
     } catch (err) {
-      alert('Menü silinemedi: ' + err.message);
+      setErrorMessage(err.message);
     }
   };
 
   const addExtra = async () => {
     if (!selectedMenuId || !extraName || !extraPrice) {
-      alert('Lütfen menü seçin ve ekstra malzeme adı ile fiyat girin.');
+      setErrorMessage('Lütfen menü seçin ve ekstra malzeme adı ile fiyat girin.');
       return;
     }
     try {
-      const res = await fetch(
-        `http://localhost:5000/api/menu/extras/${restaurantId}`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${localStorage.getItem('token')}`,
-          },
-          body: JSON.stringify({
-            menu_id: selectedMenuId,
-            name: extraName,
-            price: parseFloat(extraPrice),
-          }),
-        }
-      );
+      const res = await fetch(`http://localhost:5000/api/${restaurantId}/${branchId}/menus/extras`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+        },
+        body: JSON.stringify({
+          menu_id: selectedMenuId,
+          name: extraName,
+          price: parseFloat(extraPrice),
+        }),
+      });
+      if (!res.ok) {
+        const errorData = await res.json();
+        if (res.status === 401) throw new Error('Lütfen giriş yapın.');
+        if (res.status === 403) throw new Error('Bu şubeye erişim yetkiniz yok.');
+        throw new Error(errorData.message || 'Ekstra malzeme eklenemedi.');
+      }
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
-
       setExtras((prev) => ({
         ...prev,
         [selectedMenuId]: [
@@ -179,34 +211,32 @@ const Menus = () => {
       setExtraName('');
       setExtraPrice('');
       setSelectedMenuId(null);
-      alert('Ekstra malzeme eklendi!');
-      socket?.emit('menu-updated', { restaurant_id: restaurantId });
+      socket?.emit('menu-updated', { restaurant_id: parseInt(restaurantId), branch_id: parseInt(branchId) });
     } catch (err) {
-      alert('Ekstra malzeme eklenemedi: ' + err.message);
+      setErrorMessage(err.message);
     }
   };
 
   const deleteExtra = async (menuId, extraId) => {
-    if (!window.confirm('Bu ekstra malzemeyi silmek istediğinizden emin misiniz?')) return;
     try {
-      const res = await fetch(
-        `http://localhost:5000/api/menu/extras/${extraId}`,
-        {
-          method: 'DELETE',
-          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-        }
-      );
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
-
+      const res = await fetch(`http://localhost:5000/api/${restaurantId}/${branchId}/menus/extras/${extraId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+        });
+      if (!res.ok) {
+        const errorData = await res.json();
+        if (res.status === 401) throw new Error('Lütfen giriş yapın.');
+        if (res.status === 403) throw new Error('Bu şubeye erişim yetkiniz yok.');
+        throw new Error(errorData.message || 'Ekstra malzeme silinemedi.');
+      }
       setExtras((prev) => ({
         ...prev,
         [menuId]: prev[menuId].filter((extra) => extra.id !== extraId),
       }));
-      alert('Ekstra malzeme silindi!');
-      socket?.emit('menu-updated', { restaurant_id: restaurantId });
+      setDeleteExtraConfirm(null);
+      socket?.emit('menu-updated', { restaurant_id: parseInt(restaurantId), branch_id: parseInt(branchId) });
     } catch (err) {
-      alert('Ekstra malzeme silinemedi: ' + err.message);
+      setErrorMessage(err.message);
     }
   };
 
@@ -219,16 +249,18 @@ const Menus = () => {
       formData.append('category', updatedData.category);
       if (updatedData.image) formData.append('image', updatedData.image);
 
-      const res = await fetch(`http://localhost:5000/api/menu/${menuId}`, {
+      const res = await fetch(`http://localhost:5000/api/${restaurantId}/${branchId}/menus/${menuId}`, {
         method: 'PUT',
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-        },
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
         body: formData,
       });
+      if (!res.ok) {
+        const errorData = await res.json();
+        if (res.status === 401) throw new Error('Lütfen giriş yapın.');
+        if (res.status === 403) throw new Error('Bu şubeye erişim yetkiniz yok.');
+        throw new Error(errorData.message || 'Menü güncellenemedi.');
+      }
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Bilinmeyen hata');
-
       setMenus((prev) =>
         prev.map((menu) =>
           menu.id === menuId
@@ -243,23 +275,64 @@ const Menus = () => {
             : menu
         )
       );
-
       setEditingMenus((prev) => {
         const copy = { ...prev };
         delete copy[menuId];
         return copy;
       });
-
-      alert('Menü güncellendi!');
-      socket?.emit('menu-updated', { restaurant_id: restaurantId });
+      socket?.emit('menu-updated', { restaurant_id: parseInt(restaurantId), branch_id: parseInt(branchId) });
     } catch (err) {
-      alert('Menü güncellenemedi: ' + err.message);
+      setErrorMessage(err.message);
     }
   };
 
+  // Paket kontrolü
+  if (!['package2', 'premium'].includes(package_type)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="bg-red-100 text-red-600 p-4 rounded-md shadow-md max-w-md text-center">
+          Bu özellik yalnızca package2 ve premium paketlerde kullanılabilir.
+        </div>
+      </div>
+    );
+  }
+
+  // Yetkisiz erişim
+  if (!user || user.role !== 'admin' || user.restaurant_id !== parseInt(restaurantId) || branchId !== selectedBranch) {
+    return <Navigate to="/login" replace />;
+  }
+
+  // Yükleme durumu
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-xl text-gray-600">Yükleniyor...</div>
+      </div>
+    );
+  }
+
+  // Hata mesajı
+  if (errorMessage) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="bg-red-100 text-red-600 p-4 rounded-md shadow-md max-w-md text-center">
+          {errorMessage}
+          <button
+            className="mt-4 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+            onClick={() => setErrorMessage('')}
+          >
+            Kapat
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="p-4">
-      <h3 className="text-xl font-semibold mb-4">Menü Tanımlama</h3>
+    <div className="p-4 bg-gray-100 min-h-screen">
+      <h3 className="text-xl font-semibold mb-4">
+        Menü Tanımlama – Restoran {restaurantId}, Şube {branchId}
+      </h3>
 
       {/* Menü Ekleme Formu */}
       <div className="mb-6">
@@ -269,7 +342,7 @@ const Menus = () => {
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Menü adı"
+            placeholder="Menü adı (örn. Hamburger)"
             className="p-2 border rounded-md"
           />
           <input
@@ -277,20 +350,22 @@ const Menus = () => {
             value={price}
             onChange={(e) => setPrice(e.target.value)}
             placeholder="Fiyat (TL)"
+            min="0"
+            step="0.01"
             className="p-2 border rounded-md"
           />
           <input
             type="text"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Açıklama"
+            placeholder="Açıklama (opsiyonel)"
             className="p-2 border rounded-md"
           />
           <input
             type="text"
             value={category}
             onChange={(e) => setCategory(e.target.value)}
-            placeholder="Kategori"
+            placeholder="Kategori (örn. Ana Yemek)"
             className="p-2 border rounded-md"
           />
           <input
@@ -331,7 +406,7 @@ const Menus = () => {
             type="text"
             value={extraName}
             onChange={(e) => setExtraName(e.target.value)}
-            placeholder="Ekstra malzeme adı"
+            placeholder="Ekstra malzeme adı (örn. Peynir)"
             className="p-2 border rounded-md"
           />
           <input
@@ -352,185 +427,240 @@ const Menus = () => {
         </div>
       </div>
 
-      <h3 className="text-xl font-semibold mb-4">Menüler</h3>
-      <div className="space-y-8">
-        {[...new Set(menus.map((m) => m.category || 'Genel'))].map((cat) => (
-          <div key={cat}>
-            <h4 className="text-lg font-semibold mb-2">{cat}</h4>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {menus
-                .filter((m) => (m.category || 'Genel') === cat)
-                .map((menu) => {
-                  const isEditingThis = !!editingMenus[menu.id];
-                  const editData = editingMenus[menu.id] || {};
+      {/* Menü Listesi */}
+      {menus.length === 0 ? (
+        <div className="text-gray-600">Bu şubede tanımlı menü bulunmamaktadır.</div>
+      ) : (
+        <div className="space-y-8">
+          {[...new Set(menus.map((m) => m.category || 'Genel'))].map((cat) => (
+            <div key={cat}>
+              <h4 className="text-lg font-semibold mb-2">{cat}</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {menus
+                  .filter((m) => (m.category || 'Genel') === cat)
+                  .map((menu) => {
+                    const isEditingThis = !!editingMenus[menu.id];
+                    const editData = editingMenus[menu.id] || {};
 
-                  return (
-                    <div key={menu.id} className="p-4 bg-white shadow-md rounded-md">
-                      {isEditingThis ? (
-                        <>
-                          <input
-                            type="text"
-                            value={editData.name}
-                            onChange={(e) =>
-                              setEditingMenus((prev) => ({
-                                ...prev,
-                                [menu.id]: {
-                                  ...prev[menu.id],
-                                  name: e.target.value,
-                                },
-                              }))
-                            }
-                            className="p-2 border rounded-md mb-2 w-full"
-                          />
-                          <input
-                            type="number"
-                            value={editData.price}
-                            onChange={(e) =>
-                              setEditingMenus((prev) => ({
-                                ...prev,
-                                [menu.id]: {
-                                  ...prev[menu.id],
-                                  price: e.target.value,
-                                },
-                              }))
-                            }
-                            className="p-2 border rounded-md mb-2 w-full"
-                          />
-                          <input
-                            type="text"
-                            value={editData.description}
-                            onChange={(e) =>
-                              setEditingMenus((prev) => ({
-                                ...prev,
-                                [menu.id]: {
-                                  ...prev[menu.id],
-                                  description: e.target.value,
-                                },
-                              }))
-                            }
-                            className="p-2 border rounded-md mb-2 w-full"
-                          />
-                          <input
-                            type="text"
-                            value={editData.category}
-                            onChange={(e) =>
-                              setEditingMenus((prev) => ({
-                                ...prev,
-                                [menu.id]: {
-                                  ...prev[menu.id],
-                                  category: e.target.value,
-                                },
-                              }))
-                            }
-                            className="p-2 border rounded-md mb-2 w-full"
-                          />
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={(e) =>
-                              setEditingMenus((prev) => ({
-                                ...prev,
-                                [menu.id]: {
-                                  ...prev[menu.id],
-                                  image: e.target.files[0],
-                                },
-                              }))
-                            }
-                            className="p-2 border rounded-md mb-2 w-full"
-                          />
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => updateMenuInline(menu.id, editData)}
-                              className="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600"
-                            >
-                              Güncelle
-                            </button>
-                            <button
-                              onClick={() =>
-                                setEditingMenus((prev) => {
-                                  const copy = { ...prev };
-                                  delete copy[menu.id];
-                                  return copy;
-                                })
-                              }
-                              className="bg-gray-400 text-white px-4 py-2 rounded-md hover:bg-gray-500"
-                            >
-                              İptal
-                            </button>
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          {menu.image_url && (
-                            <img
-                              src={`http://localhost:5000${menu.image_url}`}
-                              alt={menu.name}
-                              className="w-full object-cover mb-2 rounded-md"
-                              style={{ height: '300px' }}
-                            />
-                          )}
-                          <p className="text-lg font-semibold">{menu.name}</p>
-                          <p className="text-gray-600">{menu.description}</p>
-                          <p className="text-blue-600 font-bold">{menu.price} TL</p>
-
-                          <div className="mt-2">
-                            <h5 className="font-semibold">Ekstra Malzemeler:</h5>
-                            {(extras[menu.id] || []).length > 0 ? (
-                              extras[menu.id].map((extra) => (
-                                <div
-                                  key={extra.id}
-                                  className="flex justify-between items-center mt-1"
-                                >
-                                  <p>
-                                    {extra.name} - {extra.price} TL
-                                  </p>
-                                  <button
-                                    onClick={() => deleteExtra(menu.id, extra.id)}
-                                    className="bg-red-500 text-white px-2 py-1 rounded-md hover:bg-red-600"
-                                  >
-                                    Sil
-                                  </button>
-                                </div>
-                              ))
-                            ) : (
-                              <p className="text-gray-500">Ekstra malzeme yok.</p>
-                            )}
-                          </div>
-
-                          <div className="flex gap-2 mt-4">
-                            <button
-                              onClick={() =>
+                    return (
+                      <div
+                        key={menu.id}
+                        className="p-4 bg-white shadow-md rounded-md relative"
+                      >
+                        {isEditingThis ? (
+                          <>
+                            <input
+                              type="text"
+                              value={editData.name}
+                              onChange={(e) =>
                                 setEditingMenus((prev) => ({
                                   ...prev,
                                   [menu.id]: {
-                                    name: menu.name,
-                                    price: menu.price,
-                                    description: menu.description || '',
-                                    category: menu.category || '',
-                                    image: null,
+                                    ...prev[menu.id],
+                                    name: e.target.value,
                                   },
                                 }))
                               }
-                              className="bg-yellow-500 text-white px-4 py-2 rounded-md hover:bg-yellow-600"
-                            >
-                              Düzenle
-                            </button>
-                            <button
-                              onClick={() => deleteMenu(menu.id)}
-                              className="bg-red-500 text-white px-4 py-2 rounded-md hover:bg-red-600"
-                            >
-                              Sil
-                            </button>
+                              placeholder="Menü adı"
+                              className="p-2 border rounded-md mb-2 w-full"
+                            />
+                            <input
+                              type="number"
+                              value={editData.price}
+                              onChange={(e) =>
+                                setEditingMenus((prev) => ({
+                                  ...prev,
+                                  [menu.id]: {
+                                    ...prev[menu.id],
+                                    price: e.target.value,
+                                  },
+                                }))
+                              }
+                              placeholder="Fiyat (TL)"
+                              min="0"
+                              step="0.01"
+                              className="p-2 border rounded-md mb-2 w-full"
+                            />
+                            <input
+                              type="text"
+                              value={editData.description}
+                              onChange={(e) =>
+                                setEditingMenus((prev) => ({
+                                  ...prev,
+                                  [menu.id]: {
+                                    ...prev[menu.id],
+                                    description: e.target.value,
+                                  },
+                                }))
+                              }
+                              placeholder="Açıklama"
+                              className="p-2 border rounded-md mb-2 w-full"
+                            />
+                            <input
+                              type="text"
+                              value={editData.category}
+                              onChange={(e) =>
+                                setEditingMenus((prev) => ({
+                                  ...prev,
+                                  [menu.id]: {
+                                    ...prev[menu.id],
+                                    category: e.target.value,
+                                  },
+                                }))
+                              }
+                              placeholder="Kategori"
+                              className="p-2 border rounded-md mb-2 w-full"
+                            />
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={(e) =>
+                                setEditingMenus((prev) => ({
+                                  ...prev,
+                                  [menu.id]: {
+                                    ...prev[menu.id],
+                                    image: e.target.files[0],
+                                  },
+                                }))
+                              }
+                              className="p-2 border rounded-md mb-2 w-full"
+                            />
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => updateMenuInline(menu.id, editData)}
+                                className="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600"
+                              >
+                                Güncelle
+                              </button>
+                              <button
+                                onClick={() =>
+                                  setEditingMenus((prev) => {
+                                    const copy = { ...prev };
+                                    delete copy[menu.id];
+                                    return copy;
+                                  })
+                                }
+                                className="bg-gray-400 text-white px-4 py-2 rounded-md hover:bg-gray-500"
+                              >
+                                İptal
+                              </button>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            {menu.image_url && (
+                              <img
+                                src={`http://localhost:5000${menu.image_url}`}
+                                alt={menu.name}
+                                className="w-full object-cover mb-2 rounded-md"
+                                style={{ height: '300px' }}
+                              />
+                            )}
+                            <p className="text-lg font-semibold">{menu.name}</p>
+                            <p className="text-gray-600">{menu.description || 'Açıklama yok'}</p>
+                            <p className="text-blue-600 font-bold">{menu.price} TL</p>
+
+                            <div className="mt-2">
+                              <h5 className="font-semibold">Ekstra Malzemeler:</h5>
+                              {(extras[menu.id] || []).length > 0 ? (
+                                extras[menu.id].map((extra) => (
+                                  <div
+                                    key={extra.id}
+                                    className="flex justify-between items-center mt-1"
+                                  >
+                                    <p>
+                                      {extra.name} - {extra.price} TL
+                                    </p>
+                                    <button
+                                      onClick={() => setDeleteExtraConfirm({ menuId: menu.id, extraId: extra.id })}
+                                      className="bg-red-500 text-white px-2 py-1 rounded-md hover:bg-red-600"
+                                    >
+                                      Sil
+                                    </button>
+                                  </div>
+                                ))
+                              ) : (
+                                <p className="text-gray-500">Ekstra malzeme yok.</p>
+                              )}
+                            </div>
+
+                            <div className="flex gap-2 mt-4">
+                              <button
+                                onClick={() =>
+                                  setEditingMenus((prev) => ({
+                                    ...prev,
+                                    [menu.id]: {
+                                      name: menu.name,
+                                      price: menu.price,
+                                      description: menu.description || '',
+                                      category: menu.category || '',
+                                      image: null,
+                                    },
+                                  }))
+                                }
+                                className="bg-yellow-500 text-white px-4 py-2 rounded-md hover:bg-yellow-600"
+                              >
+                                Düzenle
+                              </button>
+                              <button
+                                onClick={() => setDeleteConfirm(menu.id)}
+                                className="bg-red-500 text-white px-4 py-2 rounded-md hover:bg-red-600"
+                              >
+                                Sil
+                              </button>
+                            </div>
+                          </>
+                        )}
+                        {deleteConfirm === menu.id && (
+                          <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                            <div className="bg-white p-4 rounded-md shadow-md max-w-sm text-center">
+                              <p>"{menu.name}" menüsünü silmek istediğinizden emin misiniz?</p>
+                              <div className="mt-4 flex gap-4 justify-center">
+                                <button
+                                  onClick={() => deleteMenu(menu.id)}
+                                  className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
+                                >
+                                  Evet, Sil
+                                </button>
+                                <button
+                                  onClick={() => setDeleteConfirm(null)}
+                                  className="bg-gray-300 text-black px-3 py-1 rounded hover:bg-gray-400"
+                                >
+                                  İptal
+                                </button>
+                              </div>
+                            </div>
                           </div>
-                        </>
-                      )}
-                    </div>
-                  );
-                })}
+                        )}
+                        {deleteExtraConfirm && deleteExtraConfirm.menuId === menu.id && (
+                          <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                            <div className="bg-white p-4 rounded-md shadow-md max-w-sm text-center">
+                              <p>"{extras[menu.id]?.find((e) => e.id === deleteExtraConfirm.extraId)?.name}" ekstra malzemesini silmek istediğinizden emin misiniz?</p>
+                              <div className="mt-4 flex gap-4 justify-center">
+                                <button
+                                  onClick={() => deleteExtra(deleteExtraConfirm.menuId, deleteExtraConfirm.extraId)}
+                                  className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
+                                >
+                                  Evet, Sil
+                                </button>
+                                <button
+                                  onClick={() => setDeleteExtraConfirm(null)}
+                                  className="bg-gray-300 text-black px-3 py-1 rounded hover:bg-gray-400"
+                                >
+                                  İptal
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };

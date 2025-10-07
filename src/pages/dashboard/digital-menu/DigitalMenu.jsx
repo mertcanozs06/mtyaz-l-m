@@ -1,28 +1,123 @@
-import { useState, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useState, useRef, useEffect, useContext } from 'react';
+import { useParams, Navigate, useNavigate } from 'react-router-dom';
 import QRCode from 'react-qr-code';
+import { AuthContext } from '../../../context/AuthContext';
 
-const DigitalMenu= () => {
-  const { restaurantId } = useParams();
-  const [tableCount, setTableCount] = useState('');
-  const [qrReady, setQrReady] = useState(false);
+const DigitalMenu = () => {
+  const { restaurantId, branchId } = useParams();
+  const { user, selectedBranch, package_type, token, logout, updateUser } = useContext(AuthContext);
+  const navigate = useNavigate();
+  const [tables, setTables] = useState([]);
   const [selectedTable, setSelectedTable] = useState('all');
-
-  // QR kodu içeren divi refere etmek için
+  const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState('');
   const qrRef = useRef(null);
 
-  const handleGenerate = () => {
-    const count = parseInt(tableCount, 10);
-    if (!isNaN(count) && count > 0) {
-      setQrReady(true);
-      setSelectedTable('all');
-    } else {
-      alert('Lütfen geçerli bir sayı girin.');
-    }
-  };
+  // Masa verilerini çek
+  useEffect(() => {
+    const fetchTables = async () => {
+      if (!user || !selectedBranch || !token) {
+        setErrorMessage('Kullanıcı, şube veya token bilgisi eksik.');
+        setLoading(false);
+        return;
+      }
 
-  const tables = [...Array(Number(tableCount)).keys()].map(i => i + 1);
-  const displayedTables = selectedTable === 'all' ? tables : [Number(selectedTable)];
+      if (user.restaurant_id !== parseInt(restaurantId)) {
+        setErrorMessage('Bu restorana erişim yetkiniz yok.');
+        setLoading(false);
+        return;
+      }
+
+      if (branchId !== selectedBranch) {
+        console.log('Branch ID mismatch:', { branchId, selectedBranch });
+        navigate(`/dashboard/${restaurantId}/${selectedBranch}/qrmenu`);
+        return;
+      }
+
+      try {
+        const res = await fetch(`http://localhost:5000/api/tables/${restaurantId}/${selectedBranch}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) {
+          const errorData = await res.json();
+          if (res.status === 401) {
+            setErrorMessage('Oturumunuz sona erdi. Lütfen tekrar giriş yapın.');
+            logout();
+            navigate('/login');
+            return;
+          }
+          if (res.status === 403) throw new Error('Bu şubeye erişim yetkiniz yok.');
+          if (res.status === 404) throw new Error('Bu şubeye ait masa bulunamadı. Lütfen masa ekleyin.');
+          throw new Error(errorData.message || 'Masalar yüklenemedi.');
+        }
+        const data = await res.json();
+        setTables(data);
+        // X-New-Token kontrolü
+        const newToken = res.headers.get('X-New-Token');
+        if (newToken) {
+          localStorage.setItem('token', newToken);
+          updateUser();
+        }
+        setLoading(false);
+      } catch (err) {
+        setErrorMessage(err.message);
+        setLoading(false);
+      }
+    };
+
+    console.log('Fetching tables:', { restaurantId, branchId, selectedBranch });
+    fetchTables();
+  }, [user, restaurantId, branchId, selectedBranch, token, logout, navigate, updateUser]);
+
+  // Paket kontrolü
+  if (!['package2', 'premium'].includes(package_type)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="bg-red-100 text-red-600 p-4 rounded-md shadow-md max-w-md text-center">
+          Bu özellik yalnızca package2 ve premium paketlerde kullanılabilir.
+        </div>
+      </div>
+    );
+  }
+
+  // Yetkisiz erişim
+  if (!user || user.restaurant_id !== parseInt(restaurantId) || branchId !== selectedBranch) {
+    return <Navigate to="/login" replace />;
+  }
+
+  // Yükleme durumu
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-xl text-gray-600">Yükleniyor...</div>
+      </div>
+    );
+  }
+
+  // Hata mesajı
+  if (errorMessage) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="bg-red-100 text-red-600 p-4 rounded-md shadow-md max-w-md text-center">
+          {errorMessage}
+          <button
+            className="mt-4 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+            onClick={() => {
+              setErrorMessage('');
+              if (errorMessage.includes('Oturumunuz sona erdi')) {
+                logout();
+                navigate('/login');
+              } else if (errorMessage.includes('masa bulunamadı')) {
+                navigate(`/dashboard/${restaurantId}/${selectedBranch}/branchadd`);
+              }
+            }}
+          >
+            Kapat
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // Yazdırma fonksiyonu
   const handlePrint = () => {
@@ -38,11 +133,10 @@ const DigitalMenu= () => {
     printWindow.close();
   };
 
-  // İndir butonu için canvas'a dönüştürüp indir
+  // İndir fonksiyonu
   const handleDownload = () => {
     if (!qrRef.current) return;
 
-    // react-qr-code svg render ediyor, bunu canvas'a çevirmek için:
     const svg = qrRef.current.querySelector('svg');
     if (!svg) return alert('QR kod bulunamadı.');
 
@@ -69,95 +163,88 @@ const DigitalMenu= () => {
     img.src = url;
   };
 
+  const displayedTables = selectedTable === 'all' ? tables.map((t) => t.table_number) : [Number(selectedTable)];
+
   return (
     <div className="min-h-screen bg-gray-100 p-8 flex flex-col items-center">
       <h1 className="text-2xl font-bold mb-6">
-        QR Menü Oluştur – <span className="text-blue-600">{restaurantId}</span>
+        QR Menü Oluştur – <span className="text-blue-600">Restoran {restaurantId}, Şube {selectedBranch}</span>
       </h1>
 
-      <div className="mb-6 flex items-center gap-3">
-        <input
-          type="number"
-          placeholder="Masa sayısı"
-          className="border px-4 py-2 rounded w-40"
-          value={tableCount}
-          onChange={(e) => setTableCount(e.target.value)}
-        />
-        <button
-          onClick={handleGenerate}
-          className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
-        >
-          Oluştur
-        </button>
-      </div>
+      {tables.length === 0 ? (
+        <div className="text-gray-600">Bu şubede tanımlı masa bulunmamaktadır.</div>
+      ) : (
+        <>
+          <div className="mb-6">
+            <label className="mr-2 font-semibold" htmlFor="tableSelect">
+              Masa Seç:
+            </label>
+            <select
+              id="tableSelect"
+              className="border px-3 py-2 rounded"
+              value={selectedTable}
+              onChange={(e) => setSelectedTable(e.target.value)}
+            >
+              <option value="all">Tüm Masalar</option>
+              {tables.map((table) => (
+                <option key={table.id} value={table.table_number}>
+                  Masa {table.table_number} {table.region ? `(${table.region})` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
 
-      {qrReady && (
-        <div className="mb-6">
-          <label className="mr-2 font-semibold" htmlFor="tableSelect">
-            Masa Seç:
-          </label>
-          <select
-            id="tableSelect"
-            className="border px-3 py-2 rounded"
-            value={selectedTable}
-            onChange={(e) => setSelectedTable(e.target.value)}
+          <div
+            className={`grid gap-6 ${
+              selectedTable === 'all' ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-1 justify-center'
+            }`}
           >
-            <option value="all">Tüm Masalar</option>
-            {tables.map((tableNum) => (
-              <option key={tableNum} value={tableNum}>
-                Masa {tableNum}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
+            {displayedTables.map((tableNumber) => {
+              const qrUrl = `http://localhost:5173/qrmenu/${restaurantId}/${selectedBranch}/${tableNumber}`;
+              const size = selectedTable === 'all' ? 128 : 256;
 
-      {qrReady && (
-        <div
-          className={`grid gap-6 ${
-            selectedTable === 'all' ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-1 justify-center'
-          }`}
-        >
-          {displayedTables.map((tableNumber) => {
-            const qrUrl = `http://localhost:5173/qrmenu/${restaurantId}/${tableNumber}`;
-            const size = selectedTable === 'all' ? 128 : 256;
-
-            return (
-              <div
-                key={tableNumber}
-                className="bg-white shadow p-4 flex flex-col items-center rounded"
-                ref={tableNumber === Number(selectedTable) ? qrRef : null}
-              >
-                <QRCode value={qrUrl} size={size} />
-                <p className="mt-2 font-semibold">Masa {tableNumber}</p>
-                <a
-                  href={qrUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-blue-600 underline text-sm mt-1"
+              return (
+                <div
+                  key={tableNumber}
+                  className="bg-white shadow p-4 flex flex-col items-center rounded"
+                  ref={tableNumber === Number(selectedTable) ? qrRef : null}
                 >
-                  Menüyü Aç
-                </a>
-                {selectedTable !== 'all' && (
-                  <div className="mt-4 flex gap-4">
-                    <button
-                      onClick={handlePrint}
-                      className="bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600"
-                    >
-                      Yazdır
-                    </button>
-                    <button
-                      onClick={handleDownload}
-                      className="bg-indigo-500 text-white px-3 py-1 rounded hover:bg-indigo-600"
-                    >
-                      İndir
-                    </button>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+                  <QRCode value={qrUrl} size={size} />
+                  <p className="mt-2 font-semibold">
+                    Masa {tableNumber}
+                    {tables.find((t) => t.table_number === tableNumber)?.region
+                      ? ` (${tables.find((t) => t.table_number === tableNumber).region})`
+                      : ''}
+                  </p>
+                  <a
+                    href={qrUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 underline text-sm mt-1"
+                  >
+                    Menüyü Aç
+                  </a>
+                  {selectedTable !== 'all' && (
+                    <div className="mt-4 flex gap-4">
+                      <button
+                        onClick={handlePrint}
+                        className="bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600"
+                      >
+                        Yazdır
+                      </button>
+                      <button
+                        onClick={handleDownload}
+                        className="bg-indigo-500 text-white px-3 py-1 rounded hover:bg-indigo-600"
+                      >
+                        İndir
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </>
       )}
     </div>
   );

@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom';
 import { AuthContext } from '../../../context/AuthContext';
 
 const İşlemler = () => {
-  const { user, logout } = useContext(AuthContext);
+  const { user, logout ,token } = useContext(AuthContext);
   const { restaurantid } = useParams();
 
   if (user.role !== 'admin') return null;
