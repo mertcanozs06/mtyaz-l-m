@@ -1,245 +1,250 @@
-// src/pages/register/Register.jsx
-import React, { useState, useContext } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { jwtDecode } from 'jwt-decode';
-import { AuthContext } from '../../context/AuthContext';
-import { SocketContext } from '../../context/SocketContext';
-import RegisterLogo from '../../components/register/register-logo/RegisterLogo';
-import RegisterHeader from '../../components/register/register-header/RegisterHeader';
-import RegisterBusınessAd from '../../components/register/register-işletme-adı/RegisterBusınessAd';
-import RegisterRestaurantName from '../../components/register/register-restaurant-name/RegisterRestaurantName';
-import RegisterEmail from '../../components/register/register-email/RegisterEmail';
-import RegisterTel from '../../components/register/register-tel/RegisterTel';
-import RegisterPassword from '../../components/register/register-password/RegisterPassword';
-import RegisterPasswordRepeat from '../../components/register/register-password-repeat/RegisterPasswordRepeat';
-import RegisterMetin from '../../components/register/register-metin/RegisterMetin';
-import RegisterButton from '../../components/register/register-button/RegisterButton';
-import RegisterBilgi from '../../components/register/register-bilgi/RegisterBilgi';
+import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 
-const Register = () => {
-  const [formData, setFormData] = useState({
-    name: '',
-    phone: '',
-    address: '',
-    email: '',
-    password: '',
-    repeatPassword: '',
-    restaurantName: '',
-    check: false,
-    package_type: '', // Varsayılan değer yok, kullanıcı seçecek
-  });
-  const [errorMessage, setErrorMessage] = useState('');
-  const [successMessage, setSuccessMessage] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+const API_URL = import.meta.env.VITE_API_URL
+  ? `${import.meta.env.VITE_API_URL}/api`
+  : "http://localhost:5000/api";
 
-  const { login } = useContext(AuthContext);
-  const { socket } = useContext(SocketContext);
+export default function Register() {
   const navigate = useNavigate();
 
+  const [formData, setFormData] = useState({
+    name: "",
+    email: "",
+    password: "",
+    phone: "",
+    address: "",
+    restaurantName: "",
+    package_type: "basic",
+    branch_count: 1,
+  });
+
+  const [priceData, setPriceData] = useState(null);
+  const [loadingPrice, setLoadingPrice] = useState(false);
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  // 💰 Paket veya şube sayısı değiştiğinde fiyatı hesapla
+  useEffect(() => {
+    const fetchPrice = async () => {
+      if (!formData.package_type) return;
+      setLoadingPrice(true);
+
+      try {
+        const response = await fetch(
+          `${API_URL}/payments/calculate?package_type=${encodeURIComponent(
+            formData.package_type
+          )}&branches=${encodeURIComponent(formData.branch_count)}`
+        );
+
+        if (!response.ok) throw new Error("Fiyat bilgisi alınamadı.");
+
+        const data = await response.json();
+        if (data && data.formatted) {
+          setPriceData(data);
+        } else {
+          throw new Error("Fiyat verisi hatalı döndü.");
+        }
+      } catch (err) {
+        console.error("💸 Fiyat alınamadı:", err);
+        setPriceData(null);
+      } finally {
+        setLoadingPrice(false);
+      }
+    };
+
+    fetchPrice();
+  }, [formData.package_type, formData.branch_count]);
+
+  // 🔄 Input değişimlerini yönet
   const handleChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: type === 'checkbox' ? checked : value,
-    }));
+    const { name, value } = e.target;
+
+    setFormData((prev) => {
+      if (name === "package_type") {
+        return {
+          ...prev,
+          package_type: value,
+          branch_count: value === "basic" ? 1 : prev.branch_count,
+        };
+      }
+
+      return {
+        ...prev,
+        [name]:
+          name === "branch_count" ? Math.max(1, parseInt(value) || 1) : value,
+      };
+    });
   };
 
-  const handleSubmit = async (e) => {
+  // 🧾 Kayıt + Abonelik ödeme işlemi
+  const handleRegister = async (e) => {
     e.preventDefault();
-    setErrorMessage('');
-    setSuccessMessage('');
-    setIsLoading(true);
-
-    // İstemci tarafı validasyon
-    if (!formData.name || !formData.email || !formData.password || !formData.restaurantName || !formData.phone || !formData.address || !formData.package_type) {
-      setErrorMessage('Tüm zorunlu alanları doldurunuz.');
-      setIsLoading(false);
-      return;
-    }
-    if (!formData.check) {
-      setErrorMessage('Kullanım şartlarını kabul etmelisiniz.');
-      setIsLoading(false);
-      return;
-    }
-    if (formData.password !== formData.repeatPassword) {
-      setErrorMessage('Şifreler uyuşmuyor.');
-      setIsLoading(false);
-      return;
-    }
-    if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      setErrorMessage('Geçerli bir email adresi giriniz.');
-      setIsLoading(false);
-      return;
-    }
-    if (formData.password.length < 6) {
-      setErrorMessage('Şifre en az 6 karakter olmalı.');
-      setIsLoading(false);
-      return;
-    }
-    if (!/^\+?\d{10,15}$/.test(formData.phone)) {
-      setErrorMessage('Geçerli bir telefon numarası giriniz.');
-      setIsLoading(false);
-      return;
-    }
-    if (!['base', 'package2', 'premium'].includes(formData.package_type)) {
-      setErrorMessage('Geçerli bir paket türü seçiniz.');
-      setIsLoading(false);
-      return;
-    }
-
+    setLoading(true);
+    setMessage("");
     try {
-      const res = await fetch('http://localhost:5000/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: formData.name,
-          phone: formData.phone,
-          address: formData.address,
-          email: formData.email,
-          password: formData.password,
-          restaurantName: formData.restaurantName,
-          package_type: formData.package_type,
-        }),
+      const response = await fetch(`${API_URL}/auth/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
       });
-
-      const data = await res.json();
-      if (!res.ok) {
-        if (res.status === 409) {
-          throw new Error('Bu email adresi zaten kullanımda.');
+      const data = await response.json();
+      if (response.ok) {
+        setMessage("Kayıt başarılı! Yönlendiriliyorsunuz...");
+        // Eğer paymentPageUrl varsa otomatik yönlendir
+        if (data.paymentPageUrl) {
+          window.location.href = data.paymentPageUrl;
+        } else {
+          // Eğer ödeme linki yoksa, dashboard veya başka bir sayfaya yönlendir
+          navigate("/dashboard");
         }
-        throw new Error(data.message || 'Kayıt olunamadı.');
+      } else {
+        setMessage(data.message || "Kayıt başarısız.");
       }
-
-      const decoded = jwtDecode(data.token);
-      login(
-        {
-          email: decoded.email,
-          role: decoded.role,
-          restaurant_id: decoded.restaurant_id,
-          branch_id: decoded.branch_id,
-          user_id: decoded.user_id,
-          package_type: data.package_type,
-        },
-        data.token,
-        data.branches
-      );
-
-      if (socket) {
-        const restaurantId = decoded.restaurant_id;
-        const branchId = decoded.branch_id;
-        socket.emit('join_owner', { restaurantId, branchId });
-      }
-
-      setSuccessMessage('Kayıt başarılı! Dashboard’a yönlendiriliyorsunuz...');
-      setTimeout(() => {
-        navigate(`/dashboard/${decoded.restaurant_id}/${decoded.branch_id}`);
-      }, 2000);
     } catch (err) {
-      console.error('Register error:', err);
-      setErrorMessage(err.message);
+      setMessage("Bir hata oluştu. Lütfen tekrar deneyin.");
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
   return (
-    <div className="w-full min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="w-full max-w-md p-10 bg-sky-500 text-white rounded-lg shadow-lg">
-        <form onSubmit={handleSubmit}>
-          {errorMessage && (
-            <div className="bg-red-100 text-red-600 p-4 rounded mb-4 text-center">
-              {errorMessage}
-            </div>
-          )}
-          {successMessage && (
-            <div className="bg-green-100 text-green-600 p-4 rounded mb-4 text-center">
-              {successMessage}
-            </div>
-          )}
-          <RegisterLogo />
-          <RegisterHeader />
-          <RegisterBusınessAd
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-50 to-green-100 p-4">
+      <div className="bg-white shadow-2xl rounded-2xl w-full max-w-md p-8">
+        <h2 className="text-3xl font-bold text-center text-emerald-700 mb-6">
+          Restoran Kaydı Oluştur 🍽️
+        </h2>
+
+        <form onSubmit={handleRegister} className="space-y-4">
+          <input
+            type="text"
+            name="name"
+            placeholder="Ad Soyad"
             value={formData.name}
             onChange={handleChange}
-            name="name"
-            label="İşletme Sahibi Adı"
-            disabled={isLoading}
+            className="w-full border border-gray-300 rounded-lg px-4 py-2"
+            required
           />
-          <RegisterRestaurantName
-            value={formData.restaurantName}
-            onChange={handleChange}
-            name="restaurantName"
-            label="Restoran Adı"
-            disabled={isLoading}
-          />
-          <RegisterEmail
+          <input
+            type="email"
+            name="email"
+            placeholder="E-posta"
             value={formData.email}
             onChange={handleChange}
-            name="email"
-            label="Email"
-            disabled={isLoading}
+            className="w-full border border-gray-300 rounded-lg px-4 py-2"
+            required
           />
-          <RegisterTel
+          <input
+            type="password"
+            name="password"
+            placeholder="Şifre"
+            value={formData.password}
+            onChange={handleChange}
+            className="w-full border border-gray-300 rounded-lg px-4 py-2"
+            required
+          />
+          <input
+            type="text"
+            name="phone"
+            placeholder="+905xxxxxxxxx"
             value={formData.phone}
             onChange={handleChange}
-            name="phone"
-            label="Telefon"
-            disabled={isLoading}
+            className="w-full border border-gray-300 rounded-lg px-4 py-2"
+            required
           />
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-1">Adres</label>
-            <input
-              type="text"
-              name="address"
-              value={formData.address}
-              onChange={handleChange}
-              className="w-full p-2 rounded bg-white text-black disabled:bg-gray-200"
-              placeholder="Restoran adresi"
-              disabled={isLoading}
-            />
-          </div>
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-1">Paket Türü</label>
+          <input
+            type="text"
+            name="address"
+            placeholder="Adres"
+            value={formData.address}
+            onChange={handleChange}
+            className="w-full border border-gray-300 rounded-lg px-4 py-2"
+            required
+          />
+          <input
+            type="text"
+            name="restaurantName"
+            placeholder="Restoran Adı"
+            value={formData.restaurantName}
+            onChange={handleChange}
+            className="w-full border border-gray-300 rounded-lg px-4 py-2"
+            required
+          />
+
+          <div>
+            <label className="block mb-1 font-semibold text-gray-700">
+              Paket Seçimi
+            </label>
             <select
               name="package_type"
               value={formData.package_type}
               onChange={handleChange}
-              className="w-full p-2 rounded bg-white text-black disabled:bg-gray-200"
-              disabled={isLoading}
+              className="w-full border border-gray-300 rounded-lg px-4 py-2"
             >
-              <option value="" disabled>Seçiniz</option>
-              <option value="base">Temel (1 Şube)</option>
-              <option value="package2">Orta (25 Şube)</option>
-              <option value="premium">Premium (Sınırsız)</option>
+              <option value="basic">Basic</option>
+              <option value="advance">Advance</option>
+              <option value="elevate">Elevate</option>
             </select>
           </div>
-          <RegisterPassword
-            value={formData.password}
-            onChange={handleChange}
-            name="password"
-            label="Şifre"
-            disabled={isLoading}
-          />
-          <RegisterPasswordRepeat
-            value={formData.repeatPassword}
-            onChange={handleChange}
-            name="repeatPassword"
-            label="Şifreyi Tekrarla"
-            disabled={isLoading}
-          />
-          <RegisterMetin
-            checked={formData.check}
-            onChange={handleChange}
-            name="check"
-            label="Kullanım şartlarını kabul ediyorum"
-            disabled={isLoading}
-          />
-          <RegisterButton disabled={isLoading} />
-          <RegisterBilgi />
+
+          {(formData.package_type === "advance" ||
+            formData.package_type === "elevate") && (
+            <div>
+              <label className="block mb-1 font-semibold text-gray-700">
+                Şube Sayısı
+              </label>
+              <input
+                type="number"
+                name="branch_count"
+                min="1"
+                value={formData.branch_count}
+                onChange={handleChange}
+                className="w-full border border-gray-300 rounded-lg px-4 py-2"
+              />
+            </div>
+          )}
+
+          {/* 💰 Fiyat Bilgisi */}
+          <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-center">
+            {loadingPrice ? (
+              <p>💸 Fiyat hesaplanıyor...</p>
+            ) : priceData ? (
+              <>
+                <p>
+                  <strong>Aylık:</strong> {priceData.formatted.monthly}
+                </p>
+                <p>
+                  <strong>Yıllık:</strong> {priceData.formatted.annual}
+                </p>
+              </>
+            ) : (
+              <p className="text-gray-500">Fiyat bilgisi alınamadı.</p>
+            )}
+          </div>
+
+          {message && (
+            <div
+              className={`text-center font-medium ${
+                message.includes("❌") ? "text-red-600" : "text-emerald-600"
+              }`}
+            >
+              {message}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading}
+            className={`w-full py-2 mt-2 text-white font-semibold rounded-lg transition ${
+              loading
+                ? "bg-gray-400 cursor-not-allowed"
+                : "bg-emerald-600 hover:bg-emerald-700"
+            }`}
+          >
+            {loading ? "İşleniyor..." : "Kaydı Tamamla ve Ödemeye Geç 💳"}
+          </button>
         </form>
       </div>
     </div>
   );
-};
-
-export default Register;
+}

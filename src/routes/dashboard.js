@@ -1,28 +1,26 @@
-// routes/dashboard.js
+// ✅ routes/dashboard.js
 import express from "express";
 import { poolPromise, sql } from "../config/db.js";
 import { authMiddleware } from "../middleware/auth.js";
 import { calculateAnnualFromMonthly, formatCurrency } from "../utils/priceCalculator.js";
-import { createPayment } from "../services/iyzicoService.js";
+import { createIyzicoPayment } from "../services/iyzicoService.js";
 
 const router = express.Router();
 
 /**
- * 🧭 Kullanıcının dashboard bilgilerini döner:
- * - Paket tipi
+ * 🧭 Kullanıcının Dashboard Bilgilerini Döndürür
+ * - Aktif paket
  * - Şube sayısı
- * - Maksimum şube hakkı
  * - Ödeme geçmişi
- * - Paket bitiş tarihi
+ * - Kalan gün
  */
 router.get("/", authMiddleware(["admin", "owner"]), async (req, res) => {
   try {
     const { user_id } = req.user;
     const pool = await poolPromise;
-    const request = pool.request();
 
-    // Kullanıcının aktif paketini çek
-    const pkg = await request
+    // 🔹 Aktif paket bilgisi
+    const pkgResult = await pool.request()
       .input("user_id", sql.Int, user_id)
       .query(`
         SELECT TOP 1 
@@ -36,14 +34,14 @@ router.get("/", authMiddleware(["admin", "owner"]), async (req, res) => {
         ORDER BY created_at DESC
       `);
 
-    if (pkg.recordset.length === 0) {
+    if (pkgResult.recordset.length === 0) {
       return res.status(404).json({ message: "Aktif paket bulunamadı" });
     }
 
-    const packageInfo = pkg.recordset[0];
+    const packageInfo = pkgResult.recordset[0];
 
-    // Kullanıcının restoran ve şube sayısı
-    const branches = await request
+    // 🔹 Şube sayısı
+    const branchResult = await pool.request()
       .input("user_id", sql.Int, user_id)
       .query(`
         SELECT COUNT(*) AS branch_count
@@ -52,10 +50,10 @@ router.get("/", authMiddleware(["admin", "owner"]), async (req, res) => {
         WHERE r.user_id = @user_id
       `);
 
-    const branchCount = branches.recordset[0].branch_count || 0;
+    const branchCount = branchResult.recordset[0].branch_count || 0;
 
-    // Ödeme geçmişi
-    const payments = await request
+    // 🔹 Ödeme geçmişi
+    const paymentsResult = await pool.request()
       .input("user_id", sql.Int, user_id)
       .query(`
         SELECT 
@@ -70,12 +68,14 @@ router.get("/", authMiddleware(["admin", "owner"]), async (req, res) => {
         ORDER BY paid_at DESC
       `);
 
+    // 🔹 Kalan gün hesabı
     const now = new Date();
     const remainingDays = Math.max(
       0,
       Math.ceil((new Date(packageInfo.end_date) - now) / (1000 * 60 * 60 * 24))
     );
 
+    // ✅ JSON Response
     res.json({
       success: true,
       package: {
@@ -83,15 +83,12 @@ router.get("/", authMiddleware(["admin", "owner"]), async (req, res) => {
         status: packageInfo.status,
         max_branches: packageInfo.max_branches,
         active_branches: branchCount,
-        remaining_branches: Math.max(
-          0,
-          packageInfo.max_branches - branchCount
-        ),
+        remaining_branches: Math.max(0, packageInfo.max_branches - branchCount),
         start_date: packageInfo.start_date,
         end_date: packageInfo.end_date,
         remaining_days: remainingDays,
       },
-      payments: payments.recordset.map((p) => ({
+      payments: paymentsResult.recordset.map((p) => ({
         id: p.id,
         package_type: p.package_type,
         amount: formatCurrency(p.amount),
@@ -101,25 +98,25 @@ router.get("/", authMiddleware(["admin", "owner"]), async (req, res) => {
       })),
     });
   } catch (err) {
-    console.error("Dashboard error:", err);
-    res
-      .status(500)
-      .json({ message: "Dashboard verileri alınamadı", error: err.message });
+    console.error("❌ Dashboard error:", err);
+    res.status(500).json({
+      message: "Dashboard verileri alınamadı.",
+      error: err.message,
+    });
   }
 });
 
 /**
- * 💳 Paket yenileme endpoint’i
- * Kullanıcı mevcut paketini yeniler.
+ * 💳 Paket Yenileme (Yıllık)
+ * Kullanıcı mevcut paketini yenilemek istediğinde çağrılır.
  */
 router.post("/renew", authMiddleware(["admin", "owner"]), async (req, res) => {
   try {
-    const { user_id } = req.user;
+    const { user_id, email } = req.user;
     const pool = await poolPromise;
-    const request = pool.request();
 
-    // Aktif paket bilgisi
-    const pkg = await request
+    // 🔹 Aktif paket çek
+    const pkgResult = await pool.request()
       .input("user_id", sql.Int, user_id)
       .query(`
         SELECT TOP 1 package_type, max_branches, end_date
@@ -128,12 +125,13 @@ router.post("/renew", authMiddleware(["admin", "owner"]), async (req, res) => {
         ORDER BY created_at DESC
       `);
 
-    if (pkg.recordset.length === 0) {
+    if (pkgResult.recordset.length === 0) {
       return res.status(404).json({ message: "Aktif paket bulunamadı" });
     }
 
-    const { package_type, max_branches } = pkg.recordset[0];
+    const { package_type, max_branches } = pkgResult.recordset[0];
 
+    // 🔹 Paket ücret hesaplama
     const amountMonthly =
       package_type === "basic"
         ? 360
@@ -143,29 +141,42 @@ router.post("/renew", authMiddleware(["admin", "owner"]), async (req, res) => {
 
     const amountYearly = calculateAnnualFromMonthly(amountMonthly);
 
-    // İyzico üzerinden ödeme oluştur
-    const iyzicoPayment = await createPayment({
-      userId: user_id,
-      email: req.user.email,
-      amount: amountYearly,
-      packageType: package_type,
-      description: `Yıllık ${package_type} paketi yenileme (${max_branches} şube)`,
+    // 🔹 İyzico ödeme isteği
+    const iyzicoPayment = await createIyzicoPayment({
+      price: amountYearly,
+      paidPrice: amountYearly,
+      buyer: {
+        id: String(user_id),
+        name: "Yenileme Kullanıcısı",
+        surname: "-",
+        email: email || "unknown@example.com",
+        phone: "+905555555555",
+      },
+      basketItems: [
+        {
+          id: `${package_type}_${Date.now()}`,
+          name: `Yıllık ${package_type} paketi yenileme (${max_branches} şube)`,
+          price: amountYearly,
+        },
+      ],
     });
 
-    // Ödeme bağlantısını döndür
-    res.json({
+    // 🔹 Kullanıcıya ödeme sayfası URL’ini döndür
+    return res.json({
       success: true,
-      message: "Yenileme ödemesi oluşturuldu",
-      iyzico_url: iyzicoPayment.checkoutFormUrl,
+      message: "Yenileme ödemesi oluşturuldu.",
+      iyzico_url:
+        iyzicoPayment?.paymentPageUrl || iyzicoPayment?.checkoutFormUrl || null,
       package: package_type,
       amount: amountYearly,
       formatted: formatCurrency(amountYearly),
     });
   } catch (err) {
-    console.error("Renew package error:", err);
-    res
-      .status(500)
-      .json({ message: "Paket yenileme işlemi başarısız", error: err.message });
+    console.error("❌ Renew package error:", err);
+    res.status(500).json({
+      message: "Paket yenileme işlemi başarısız.",
+      error: err.message,
+    });
   }
 });
 

@@ -1,12 +1,6 @@
-// utils/priceCalculator.js
 /**
- * Price calculator helper for packages.
- * Uses environment variables for package base prices (KDV dahil).
- *
- * ENV variables (optional; defaults provided):
- *   PRICE_BASIC=360
- *   PRICE_ADVANCE=720
- *   PRICE_ELEVATE=1200
+ * 📦 Fiyat Hesaplama Yardımcıları
+ * Sistem: MSSQL + JWT + Iyzico uyumlu
  */
 
 const parseEnvPrice = (v, fallback) => {
@@ -14,45 +8,52 @@ const parseEnvPrice = (v, fallback) => {
   return Number.isFinite(n) && n >= 0 ? n : fallback;
 };
 
-const PRICE_BASIC = parseEnvPrice(process.env.PRICE_BASIC, 360); // Basic paket (şube seçimi yok)
+// 💰 .env'den gelen fiyatlar (Yoksa fallback değerler)
+const PRICE_BASIC = parseEnvPrice(process.env.PRICE_BASIC, 360);
 const PRICE_ADVANCE = parseEnvPrice(process.env.PRICE_ADVANCE, 720);
 const PRICE_ELEVATE = parseEnvPrice(process.env.PRICE_ELEVATE, 1200);
 
 /**
- * Get per-branch price for a package type.
- * @param {'basic'|'advance'|'elevate'} packageType
- * @returns {number}
+ * 📊 Paket tipine göre şube başına fiyatı döndürür
  */
 export const getPricePerBranch = (packageType) => {
-  switch ((packageType || '').toLowerCase()) {
-    case 'advance':
+  switch ((packageType || "").toLowerCase()) {
+    case "advance":
       return PRICE_ADVANCE;
-    case 'elevate':
+    case "elevate":
       return PRICE_ELEVATE;
-    case 'basic':
+    case "basic":
     default:
       return PRICE_BASIC;
   }
 };
 
 /**
- * Calculate monthly total for a given package and branch count.
- * For 'basic', branchCount is ignored.
+ * 🧮 Toplam aylık fiyat hesaplama
  */
 export const calculateTotal = (packageType, branchCount = 1) => {
-  const pkg = (packageType || 'basic').toLowerCase();
+  const pkg = (packageType || "basic").toLowerCase();
   const perBranch = getPricePerBranch(pkg);
 
-  if (pkg === 'basic') {
-    return {
-      monthly: Number(perBranch.toFixed(2)),
-      perBranch: Number(perBranch.toFixed(2)),
-      branches: 0,
-    };
-  }
+  if (pkg === "basic") {
+  // 🧩 Basic pakette şube sayısı sabit 1
+  const branches = 1;
 
-  const branches = Number.isFinite(Number(branchCount)) && Number(branchCount) > 0 ? Math.floor(branchCount) : 1;
+  return {
+    monthly: Number(perBranch.toFixed(2)),
+    perBranch: Number(perBranch.toFixed(2)),
+    branches, // ✅ her zaman 1
+  };
+}
+
+
+  const branches =
+    Number.isFinite(Number(branchCount)) && Number(branchCount) > 0
+      ? Math.floor(branchCount)
+      : 1;
+
   const monthly = Number((perBranch * branches).toFixed(2));
+
   return {
     monthly,
     perBranch: Number(perBranch.toFixed(2)),
@@ -61,24 +62,35 @@ export const calculateTotal = (packageType, branchCount = 1) => {
 };
 
 /**
- * Calculate amount due for additional branches.
+ * ➕ Ek şube ekleme fiyatı hesaplama
  */
-export const calculateAddBranchesAmount = (packageType, currentBranches = 0, addBranches = 0) => {
-  const pkg = (packageType || 'basic').toLowerCase();
+export const calculateAddBranchesAmount = (
+  packageType,
+  currentBranches = 0,
+  addBranches = 0
+) => {
+  const pkg = (packageType || "basic").toLowerCase();
   const perBranch = getPricePerBranch(pkg);
 
-  if (pkg === 'basic') {
+  if (pkg === "basic") {
     return {
       amountDue: 0,
       perBranch: Number(perBranch.toFixed(2)),
       newTotalMonthly: Number(perBranch.toFixed(2)),
       oldTotalMonthly: Number(perBranch.toFixed(2)),
-      note: 'basic package does not support additional branches',
+      note: "Basic paket ek şube desteklemez.",
     };
   }
 
-  const curr = Number.isFinite(Number(currentBranches)) ? Math.floor(currentBranches) : 0;
-  const add = Number.isFinite(Number(addBranches)) ? Math.floor(addBranches) : 0;
+  const curr =
+    Number.isFinite(Number(currentBranches)) && Number(currentBranches) >= 0
+      ? Math.floor(currentBranches)
+      : 0;
+
+  const add =
+    Number.isFinite(Number(addBranches)) && Number(addBranches) > 0
+      ? Math.floor(addBranches)
+      : 0;
 
   const amountDue = Number((perBranch * add).toFixed(2));
   const oldTotalMonthly = Number((perBranch * curr).toFixed(2));
@@ -95,7 +107,7 @@ export const calculateAddBranchesAmount = (packageType, currentBranches = 0, add
 };
 
 /**
- * Convert monthly to annual (12×monthly)
+ * 📅 Aylıktan yıllık fiyata geçiş hesaplama
  */
 export const calculateAnnualFromMonthly = (monthly) => {
   const m = Number.isFinite(Number(monthly)) ? Number(monthly) : 0;
@@ -103,12 +115,15 @@ export const calculateAnnualFromMonthly = (monthly) => {
 };
 
 /**
- * Format TL currency
+ * 💵 TRY para formatı
  */
 export const formatCurrency = (amount) => {
   const n = Number.isFinite(Number(amount)) ? Number(amount) : 0;
   try {
-    return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(n);
+    return new Intl.NumberFormat("tr-TR", {
+      style: "currency",
+      currency: "TRY",
+    }).format(n);
   } catch {
     return `${n.toFixed(2)} ₺`;
   }

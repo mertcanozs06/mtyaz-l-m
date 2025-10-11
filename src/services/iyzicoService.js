@@ -1,160 +1,169 @@
-// services/iyzicoService.js
-import Iyzipay from 'iyzipay';
-import dotenv from 'dotenv';
+import crypto from "crypto";
+import dotenv from "dotenv";
+
 dotenv.config();
 
-// .env'den bilgileri al
-const iyzipay = new Iyzipay({
-  apiKey: process.env.IYZI_API_KEY,
-  secretKey: process.env.IYZI_SECRET_KEY,
-  uri: process.env.IYZI_BASE_URL || 'https://sandbox-api.iyzipay.com',
-});
+// 🔐 Ortam değişkenleri
+const IYZICO_API_KEY = process.env.IYZICO_API_KEY;
+const IYZICO_SECRET_KEY = process.env.IYZICO_SECRET_KEY;
+const IYZICO_BASE_URL = process.env.IYZICO_BASE_URL || "https://sandbox-api.iyzipay.com";
+
+// 🧮 SHA1 → Base64 imza oluşturucu
+const generateSignature = (data) => {
+  const hash = crypto.createHash("sha1").update(data).digest("base64");
+  return hash;
+};
 
 /**
- * ✅ Ödeme oluşturur (register veya ek şube için)
- * @param {Object} paymentData
- * @returns {Promise<Object>}
+ * 💳 Iyzico ödeme oluşturma servisi
+ * createSubscription() → burayı çağırır
  */
-export const createPayment = async (paymentData) => {
-  const {
-    price, // toplam tutar (ör. 7200)
-    paidPrice, // ödenecek tutar (genelde aynı)
-    currency = Iyzipay.CURRENCY.TRY,
-    conversationId,
-    buyer,
-    basketItems,
-    callbackUrl,
-    card,
-  } = paymentData;
-
+export const createIyzicoPayment = async ({
+  conversationId,
+  price,
+  paidPrice,
+  user,
+  basketItems,
+  callbackUrl,
+}) => {
   try {
-    const request = {
-      locale: Iyzipay.LOCALE.TR,
-      conversationId: conversationId || `conv_${Date.now()}`,
+    const body = {
+      locale: "tr",
+      conversationId,
       price: price.toFixed(2),
       paidPrice: paidPrice.toFixed(2),
-      currency,
-      installment: '1',
-      basketId: basketItems && basketItems.length > 0 ? basketItems[0].id : 'BASKET001',
-      paymentChannel: Iyzipay.PAYMENT_CHANNEL.WEB,
-      paymentGroup: Iyzipay.PAYMENT_GROUP.SUBSCRIPTION,
-      callbackUrl: callbackUrl || `${process.env.BASE_URL}/api/payments/callback`,
-
+      currency: "TRY",
+      installment: 1,
+      basketId: `BASKET_${conversationId}`,
+      paymentGroup: "PRODUCT",
+      callbackUrl,
       buyer: {
-        id: buyer.id,
-        name: buyer.name,
-        surname: buyer.surname,
-        gsmNumber: buyer.phone,
-        email: buyer.email,
-        identityNumber: buyer.identityNumber || '11111111111',
-        registrationAddress: buyer.address || 'Türkiye',
-        city: buyer.city || 'İstanbul',
-        country: 'Turkey',
-        ip: buyer.ip || '85.34.78.112',
+        id: String(user.id),
+        name: user.name || "Kullanıcı",
+        surname: "Admin",
+        gsmNumber: user.phone || "+905555555555",
+        email: user.email,
+        identityNumber: "11111111111",
+        lastLoginDate: new Date().toISOString(),
+        registrationDate: new Date().toISOString(),
+        registrationAddress: "Türkiye",
+        ip: "85.34.78.112",
+        city: "İstanbul",
+        country: "Turkey",
       },
-
+      shippingAddress: {
+        contactName: user.name || "Kullanıcı",
+        city: "İstanbul",
+        country: "Turkey",
+        address: "Online Hizmet",
+      },
       billingAddress: {
-        contactName: `${buyer.name} ${buyer.surname}`,
-        city: buyer.city || 'İstanbul',
-        country: 'Turkey',
-        address: buyer.address || 'Türkiye',
+        contactName: user.name || "Kullanıcı",
+        city: "İstanbul",
+        country: "Turkey",
+        address: "Online Hizmet",
       },
-
-      paymentCard: {
-        cardHolderName: card.cardHolderName,
-        cardNumber: card.cardNumber,
-        expireMonth: card.expireMonth,
-        expireYear: card.expireYear,
-        cvc: card.cvc,
-        registerCard: '0',
-      },
-
-      basketItems: basketItems.map((item) => ({
-        id: item.id,
-        name: item.name,
-        category1: item.category || 'Abonelik',
-        itemType: Iyzipay.BASKET_ITEM_TYPE.VIRTUAL,
-        price: item.price.toFixed(2),
-      })),
+      basketItems,
     };
 
-    return new Promise((resolve, reject) => {
-      iyzipay.payment.create(request, (err, result) => {
-        if (err) {
-          console.error('Iyzico ödeme hatası:', err);
-          return reject({ success: false, error: err });
-        }
+    // 🔐 Authorization Header
+    const randomString = crypto.randomBytes(8).toString("hex");
+    const authContent = `${IYZICO_API_KEY}${randomString}${IYZICO_SECRET_KEY}`;
+    const signature = generateSignature(authContent);
 
-        if (result.status !== 'success') {
-          console.warn('Iyzico hata:', result.errorMessage);
-          return reject({ success: false, error: result.errorMessage });
-        }
+    const headers = {
+      "Accept": "application/json",
+      "Content-Type": "application/json",
+      "Authorization": `IYZWS ${IYZICO_API_KEY}:${signature}:${randomString}`,
+    };
 
-        resolve({
-          success: true,
-          paymentId: result.paymentId,
-          conversationId: result.conversationId,
-          status: result.status,
-          result,
-        });
-      });
+    console.log("🚀 Iyzico ödeme isteği gönderiliyor...");
+
+    const response = await fetch(`${IYZICO_BASE_URL}/payment/iyzipos/initialize`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
     });
-  } catch (error) {
-    console.error('createPayment genel hata:', error);
-    throw new Error(error.message);
+
+    const result = await response.json();
+
+    if (result.status === "success" && result.paymentPageUrl && result.token) {
+      console.log("✅ Iyzico ödeme oluşturuldu:", result.paymentPageUrl);
+      return {
+        success: true,
+        token: result.token,
+        paymentPageUrl: result.paymentPageUrl,
+      };
+    }
+
+    console.warn("⚠️ Iyzico ödeme hatası:", result.errorMessage);
+    return {
+      success: false,
+      errorMessage: result.errorMessage || "Ödeme başlatılamadı.",
+    };
+  } catch (err) {
+    console.error("💥 createIyzicoPayment hata:", err.message);
+    return { success: false, errorMessage: err.message };
   }
 };
 
 /**
- * ✅ Callback doğrulama (ödeme tamamlandıktan sonra Iyzico'dan gelen yanıtı işler)
- * @param {string} token
- * @returns {Promise<Object>}
+ * 🔍 Iyzico ödeme doğrulama servisi
+ * handleIyzicoCallback() → burayı çağırır
  */
 export const verifyPayment = async (token) => {
   try {
-    const request = { locale: Iyzipay.LOCALE.TR, token };
+    const randomString = crypto.randomBytes(8).toString("hex");
+    const authContent = `${IYZICO_API_KEY}${randomString}${IYZICO_SECRET_KEY}`;
+    const signature = generateSignature(authContent);
 
-    return new Promise((resolve, reject) => {
-      iyzipay.payment.retrieve(request, (err, result) => {
-        if (err) {
-          console.error('Iyzico doğrulama hatası:', err);
-          return reject({ success: false, error: err });
-        }
+    const headers = {
+      "Accept": "application/json",
+      "Content-Type": "application/json",
+      "Authorization": `IYZWS ${IYZICO_API_KEY}:${signature}:${randomString}`,
+    };
 
-        if (result.status !== 'success') {
-          console.warn('Ödeme doğrulama başarısız:', result.errorMessage);
-          return reject({ success: false, error: result.errorMessage });
-        }
+    console.log("🔍 Iyzico ödeme doğrulama başlatıldı...");
 
-        resolve({
-          success: true,
-          status: result.status,
-          paymentId: result.paymentId,
-          conversationId: result.conversationId,
-          price: result.price,
-          paidPrice: result.paidPrice,
-          result,
-        });
-      });
+    const response = await fetch(`${IYZICO_BASE_URL}/payment/detail`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ token }),
     });
-  } catch (error) {
-    console.error('verifyPayment genel hata:', error);
-    throw new Error(error.message);
+
+    const result = await response.json();
+
+    if (result.status === "success") {
+      console.log("✅ Ödeme doğrulandı:", token);
+      return { status: "success", raw: result };
+    }
+
+    console.warn("⚠️ Ödeme doğrulama başarısız:", result.errorMessage);
+    return {
+      status: "failed",
+      errorMessage: result.errorMessage || "Ödeme doğrulanamadı.",
+      raw: result,
+    };
+  } catch (err) {
+    console.error("💥 verifyPayment hata:", err.message);
+    return { status: "failed", errorMessage: err.message };
   }
 };
 
 /**
- * ✅ Hata formatlayıcı
+ * 🧹 Iyzico hata mesajı formatlayıcı
  */
-export const formatIyzicoError = (err) => {
-  if (!err) return 'Bilinmeyen hata';
-  if (err.errorMessage) return err.errorMessage;
-  if (err.message) return err.message;
-  return JSON.stringify(err);
+export const formatIyzicoError = (errMsg) => {
+  if (!errMsg) return "Bilinmeyen bir hata oluştu.";
+  if (errMsg.includes("Do not honour")) return "Kart reddedildi, lütfen farklı bir kart deneyin.";
+  if (errMsg.includes("Invalid Card Number")) return "Kart numarası geçersiz.";
+  if (errMsg.includes("Insufficient Funds")) return "Yetersiz bakiye.";
+  if (errMsg.includes("Expired Card")) return "Kart süresi dolmuş.";
+  return errMsg;
 };
 
 export default {
-  createPayment,
+  createIyzicoPayment,
   verifyPayment,
   formatIyzicoError,
 };
