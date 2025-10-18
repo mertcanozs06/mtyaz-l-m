@@ -18,33 +18,33 @@ export const createSubscription = async (req, res) => {
 
     const { package_type = "basic", branches = 1 } = req.body;
 
-    // 💰 Paket fiyatları
+    // 💰 Paket fiyatları (Yıllık model: aylık fiyat × 12)
     const pricing = {
-      basic: 299,
-      advance: 499,
-      elevate: 799,
+      basic: 360,    // Aylık: ₺360 × 12 = ₺4.320
+      advance: 720,  // Aylık: ₺720 × 12 = ₺8.640
+      elevate: 1200, // Aylık: ₺1.200 × 12 = ₺14.400
     };
 
-    const monthlyPrice = pricing[package_type] || 299;
+    const monthlyPrice = pricing[package_type] || 360;
     const branchCount = branches > 0 ? parseInt(branches) : 1;
-    const totalPrice = monthlyPrice * branchCount;
+    const totalPrice = monthlyPrice * branchCount * 12; // Yıllık toplam
 
-    // 🧾 Ödeme kaydı oluştur
+    // 🧾 Ödeme kaydı oluştur (güncel şema ile)
     const conversationId = `sub_${user.id}_${Date.now()}`;
 
     const insertQuery = `
-      INSERT INTO Payments (user_id, amount, package_type, branch_count, status, conversation_id, created_at)
+      INSERT INTO Payments (customer_order_id, amount, payment_method, payment_url)
       OUTPUT INSERTED.id
-      VALUES (@user_id, @amount, @package_type, @branch_count, @status, @conversation_id, GETDATE())
+      VALUES (@customer_order_id, @amount, @payment_method, @payment_url)
     `;
 
+    const customerOrderId = `sub_${user.id}_${Date.now()}`;
+
     const insertResult = await pool.request()
-      .input("user_id", sql.Int, user.id)
+      .input("customer_order_id", sql.NVarChar, customerOrderId)
       .input("amount", sql.Decimal(18, 2), totalPrice)
-      .input("package_type", sql.NVarChar, package_type)
-      .input("branch_count", sql.Int, branchCount)
-      .input("status", sql.NVarChar, "pending")
-      .input("conversation_id", sql.NVarChar, conversationId)
+      .input("payment_method", sql.NVarChar, "iyzico")
+      .input("payment_url", sql.NVarChar, null) // Henüz URL yok
       .query(insertQuery);
 
     const paymentId = insertResult.recordset[0]?.id;
@@ -69,6 +69,13 @@ export const createSubscription = async (req, res) => {
     ];
 
     // 🚀 Iyzico ödeme başlat
+    console.log("🚀 Iyzico ödeme başlatılıyor:", {
+      conversationId,
+      totalPrice,
+      basketItems,
+      callbackUrl,
+    });
+
     const iyzicoResponse = await createIyzicoPayment({
       conversationId,
       price: totalPrice,
@@ -78,12 +85,14 @@ export const createSubscription = async (req, res) => {
       callbackUrl,
     });
 
+    console.log("📥 Iyzico yanıtı:", iyzicoResponse);
+
     // ❌ Hata durumunda işlemi iptal et
     if (!iyzicoResponse?.success) {
       await pool.request()
         .input("id", sql.Int, paymentId)
-        .input("status", sql.NVarChar, "failed")
-        .query("UPDATE Payments SET status = @status WHERE id = @id");
+        .input("payment_url", sql.NVarChar, "failed")
+        .query("UPDATE Payments SET payment_url = @payment_url WHERE id = @id");
 
       return res.status(400).json({
         message: formatIyzicoError(iyzicoResponse?.errorMessage || "Ödeme başlatılamadı."),
@@ -93,11 +102,11 @@ export const createSubscription = async (req, res) => {
     // ✅ Başarılı durumda token ve URL'i kaydet
     await pool.request()
       .input("id", sql.Int, paymentId)
-      .input("token", sql.NVarChar, iyzicoResponse.token)
+      .input("iyzico_token", sql.NVarChar, iyzicoResponse.token)
       .input("payment_url", sql.NVarChar, iyzicoResponse.paymentPageUrl)
       .query(`
-        UPDATE Payments 
-        SET iyzico_token = @token, payment_url = @payment_url, updated_at = GETDATE()
+        UPDATE Payments
+        SET iyzico_token = @iyzico_token, payment_url = @payment_url
         WHERE id = @id
       `);
 
@@ -128,7 +137,8 @@ export const createSubscription = async (req, res) => {
  * — Restaurant ve Branch kayıtları aktiflenir
  */
 export const handleIyzicoCallback = async (req, res) => {
-  const { token } = req.body;
+  // Iyzico bazen body'de, bazen query'de token gönderir
+  const token = req.body.token || req.query.token;
 
   if (!token) {
     return res.status(400).json({ message: "Token bulunamadı." });
@@ -144,40 +154,51 @@ export const handleIyzicoCallback = async (req, res) => {
       // ✅ Ödeme kaydını güncelle
       const paymentUpdate = await pool.request()
         .input("token", sql.NVarChar, token)
-        .input("status", sql.NVarChar, "success")
         .query(`
-          UPDATE Payments 
-          SET status = @status, updated_at = GETDATE()
-          OUTPUT INSERTED.user_id
+          UPDATE Payments
+          SET payment_url = 'success'
+          OUTPUT INSERTED.customer_order_id
           WHERE iyzico_token = @token
         `);
 
-      const userId = paymentUpdate.recordset[0]?.user_id;
+      const customerOrderId = paymentUpdate.recordset[0]?.customer_order_id;
+      console.log("✅ Ödeme başarılı, customer_order_id:", customerOrderId);
+
+      // Kullanıcı ID'sini customer_order_id'den çıkar (reg_{userId}_{timestamp} veya sub_{userId}_{timestamp})
+      const userIdMatch = customerOrderId?.match(/^(reg|sub)_(\d+)_/);
+      const userId = userIdMatch ? parseInt(userIdMatch[2]) : null;
 
       if (userId) {
-        // 🟢 Kullanıcıyı aktif et
+        // 🟢 Kullanıcıyı aktif et (ödeme sonrası)
         await pool.request()
           .input("id", sql.Int, userId)
-          .query(`UPDATE Users SET is_active = 1, updated_at = GETDATE() WHERE id = @id`);
+          .query(`UPDATE Users SET is_active = 1 WHERE id = @id`);
 
         // 🏪 İlgili restoranı da aktif et
         await pool.request()
           .input("user_id", sql.Int, userId)
           .query(`
-            UPDATE Restaurants 
-            SET is_active = 1, updated_at = GETDATE()
-            WHERE owner_id = @user_id
+            UPDATE Restaurants
+            SET is_active = 1
+            WHERE id = (SELECT restaurant_id FROM Users WHERE id = @user_id)
           `);
 
         // 🏢 Şubeleri aktif et
         await pool.request()
           .input("user_id", sql.Int, userId)
           .query(`
-            UPDATE Branches 
-            SET is_active = 1, updated_at = GETDATE()
-            WHERE restaurant_id IN (
-              SELECT id FROM Restaurants WHERE owner_id = @user_id
-            )
+            UPDATE Branches
+            SET is_active = 1
+            WHERE restaurant_id = (SELECT restaurant_id FROM Users WHERE id = @user_id)
+          `);
+
+        // 📦 UserPackages tablosunda güncelle (ödeme sonrası aktif)
+        await pool.request()
+          .input("user_id", sql.Int, userId)
+          .query(`
+            UPDATE UserPackages
+            SET is_trial_active = 0
+            WHERE user_id = @user_id
           `);
 
         console.log(`✅ Kullanıcı #${userId} aktif hale getirildi (ödeme başarılı).`);
@@ -189,10 +210,9 @@ export const handleIyzicoCallback = async (req, res) => {
     // ❌ Başarısız ödeme
     await pool.request()
       .input("token", sql.NVarChar, token)
-      .input("status", sql.NVarChar, "failed")
       .query(`
-        UPDATE Payments 
-        SET status = @status, updated_at = GETDATE()
+        UPDATE Payments
+        SET payment_url = 'failed'
         WHERE iyzico_token = @token
       `);
 

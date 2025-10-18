@@ -57,14 +57,15 @@ export const register = async (req, res) => {
       return res.status(409).json({ message: "Bu e-posta zaten kayıtlı." });
     }
 
-    // 💰 Paket hesaplama
-    const { monthly: totalPrice, branches: totalBranches } = calculateTotal(
+    // 💰 Paket hesaplama (Yıllık model: aylık fiyat × 12)
+    const { monthly: monthlyPrice, branches: totalBranches } = calculateTotal(
       package_type,
       branch_count
     );
+    const totalPrice = monthlyPrice * 12; // Yıllık toplam
     const pricePerBranch = totalBranches
-      ? Number((totalPrice / totalBranches).toFixed(2))
-      : totalPrice;
+      ? Number((monthlyPrice / totalBranches).toFixed(2))
+      : monthlyPrice;
 
     // Telefonu kesin olarak +905... formatına çevir
     let formattedPhone = phone || "";
@@ -121,12 +122,12 @@ export const register = async (req, res) => {
       .query(`
         INSERT INTO Users (restaurant_id, branch_id, name, email, password, phone, role, package_type, is_active, is_initial_admin, createdAt)
         OUTPUT INSERTED.id
-        VALUES (@restaurant_id, @branch_id, @name, @email, @password, @phone, 'admin', @package_type, 1, 1, GETDATE())
+        VALUES (@restaurant_id, @branch_id, @name, @email, @password, @phone, 'admin', @package_type, 0, 1, GETDATE())
       `);
     const user_id = userResult.recordset[0].id;
 
 
-    // 📦 Paket kaydı (30 gün deneme)
+    // 📦 Paket kaydı (30 gün deneme - trial sonrası ödeme ile aktifleşir)
     await trx
       .request()
       .input("user_id", sql.Int, user_id)
@@ -148,14 +149,13 @@ export const register = async (req, res) => {
           (@user_id, @package_type, @max_branches, @price_per_branch, @total_price, @trial_start_date, @trial_end_date, @is_trial_active, GETDATE())
       `);
 
-    // 💳 Iyzico ödeme başlat
-    // createIyzicoPayment fonksiyonu subscriptionController.js veya iyzicoService.js içinde mevcut
+    // 💳 Iyzico ödeme başlat (SDK ile)
     const { createIyzicoPayment } = await import("../services/iyzicoService.js");
     const conversationId = `reg_${user_id}_${Date.now()}`;
     const basketItems = [
       {
         id: String(user_id),
-        name: `${package_type.toUpperCase()} Paketi (${totalBranches} şube)` || "Paketsiz",
+        name: `${package_type.toUpperCase()} Paketi (${totalBranches} şube)`,
         category1: "Abonelik",
         category2: "Yazılım",
         itemType: "VIRTUAL",
@@ -167,7 +167,7 @@ export const register = async (req, res) => {
       conversationId,
       price: Number(totalPrice).toFixed(2),
       paidPrice: Number(totalPrice).toFixed(2),
-      user: { id: user_id, name, email, phone },
+      user: { id: user_id, name, email, phone: formattedPhone },
       basketItems,
       callbackUrl,
     });
@@ -179,7 +179,7 @@ export const register = async (req, res) => {
         id: user_id,
         name: name || "Kullanıcı",
         email: email || "test@example.com",
-        phone: formattedPhone, // Sadece formattedPhone gönderiliyor
+        phone: formattedPhone,
       },
       basketItems,
       callbackUrl,
@@ -255,6 +255,28 @@ export const login = async (req, res) => {
     if (!isMatch)
       return res.status(401).json({ message: "E-posta veya şifre hatalı." });
 
+    // 🎟️ Paket durumu kontrolü
+    const packageResult = await pool
+      .request()
+      .input("user_id", sql.Int, user.id)
+      .query(`SELECT TOP 1 * FROM UserPackages WHERE user_id = @user_id ORDER BY created_at DESC`);
+
+    const userPackage = packageResult.recordset[0];
+    if (!userPackage || (!user.is_active && !userPackage.is_trial_active)) {
+      return res.status(403).json({ message: "Hesabınız aktif değil. Ödeme yapmanız gerekiyor." });
+    }
+
+    // 👥 Şube kontrolü
+    const branchesResult = await pool
+      .request()
+      .input("restaurant_id", sql.Int, user.restaurant_id)
+      .query(`SELECT id, name FROM Branches WHERE restaurant_id = @restaurant_id`);
+
+    const branches = branchesResult.recordset;
+    if (!branches || branches.length === 0) {
+      return res.status(404).json({ message: "Bu restorana ait şube bulunamadı." });
+    }
+
     // 🔐 Token oluştur
     const token = jwt.sign(
       {
@@ -282,6 +304,12 @@ export const login = async (req, res) => {
         branch_id: user.branch_id,
         package_type: user.package_type || "basic",
       },
+      branches,
+      package: userPackage ? {
+        type: userPackage.package_type,
+        status: user.is_active ? "active" : (userPackage.is_trial_active ? "trial" : "inactive"),
+        trial_end_date: userPackage.trial_end_date,
+      } : null,
     });
   } catch (err) {
     console.error("❌ Login Error:", err);

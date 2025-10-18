@@ -90,13 +90,16 @@ export default function Register() {
       });
       const data = await response.json();
       if (response.ok) {
-        setMessage("Kayıt başarılı! Yönlendiriliyorsunuz...");
+        setMessage("Kayıt başarılı! Ödeme sayfasına yönlendiriliyorsunuz...");
         // Eğer paymentPageUrl varsa otomatik yönlendir
         if (data.paymentPageUrl) {
           window.location.href = data.paymentPageUrl;
         } else {
-          // Eğer ödeme linki yoksa, dashboard veya başka bir sayfaya yönlendir
-          navigate("/dashboard");
+          // Eğer ödeme linki yoksa, hata mesajı göster ve dashboard'a yönlendir
+          setMessage("Ödeme sayfası oluşturulamadı. Lütfen tekrar deneyin veya destek ile iletişime geçin.");
+          setTimeout(() => {
+            navigate("/dashboard");
+          }, 3000);
         }
       } else {
         setMessage(data.message || "Kayıt başarısız.");

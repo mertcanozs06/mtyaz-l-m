@@ -20,7 +20,7 @@ import regionRoutes from './routes/regions.js';
 import branchRoutes from './routes/branch.js';
 import paymentRoutes from './routes/payments.js';
 import dashboardRoutes from './routes/dashboard.js';
-import subscriptionRoutes from "./routes/subscription.js";
+import subscriptionRoutes from './routes/subscription.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -28,22 +28,30 @@ const __dirname = dirname(__filename);
 const app = express();
 const server = http.createServer(app);
 
+// === Proxy Ayarı (Ngrok için) ===
+app.set('trust proxy', true);
+
 // === CORS ===
 const corsOptions = {
-  origin: 'http://localhost:5173',
+  origin: [
+    'http://localhost:5173',
+    'https://tactual-kristofer-boundedly.ngrok-free.dev', // Ngrok URL
+    'https://sandbox-api.iyzipay.com', // Iyzico API
+  ],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
 };
-// 🔥 Her isteğe header ekle (Safari için zorunlu)
-app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin", "http://localhost:5173");
-  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  res.header("Access-Control-Allow-Credentials", "true");
-  res.header("Access-Control-Allow-Private-Network", "true");
 
-  if (req.method === "OPTIONS") {
+// Manuel header'lar (Safari ve ngrok için)
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Allow-Private-Network', 'true');
+
+  if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
   }
   next();
@@ -81,9 +89,10 @@ app.get('/', (req, res) => {
   res.send('✅ Server is running...');
 });
 
-// ✅ Bu iki rota “authMiddleware” olmadan kullanılmalı
+// === Rotalar ===
 app.use('/api/auth', authRoutes);
 app.use('/api/payments', paymentRoutes);
+app.use('/api/subscription', subscriptionRoutes);
 
 // === Diğer tüm rotalar JWT ile korunur ===
 app.use('/api/order', authMiddleware, orderRoutes);
@@ -95,8 +104,6 @@ app.use('/api/restaurant', authMiddleware, restaurantRoutes);
 app.use('/api/regions', authMiddleware, regionRoutes);
 app.use('/api/branches', authMiddleware, branchRoutes);
 app.use('/api/dashboard', authMiddleware, dashboardRoutes);
-app.use("/api/subscription", subscriptionRoutes); // ✅ Artık authMiddleware burada değil, route içinde
-
 
 // === SOCKET EVENTS ===
 io.on('connection', (socket) => {
@@ -153,4 +160,3 @@ server.listen(PORT, async () => {
     console.error('❌ Veritabanı bağlantısı başarısız:', err);
   }
 });
-

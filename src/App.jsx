@@ -18,6 +18,7 @@ import MenuSettings from './pages/dashboard/ayarlar/MenuSettings.jsx';
 import UserSettings from './pages/dashboard/ayarlar/UserSettings.jsx';
 import Register from './pages/register/Register';
 import Login from './pages/login/Login';
+import Success from './pages/success/Success';
 import Dashboard from './pages/dashboard/Dashboard.jsx';
 import DigitalMenu from './pages/dashboard/digital-menu/DigitalMenu.jsx';
 import Tanımlamalar from './pages/dashboard/tanımlamalar/Tanımlamalar.jsx';
@@ -67,6 +68,9 @@ function App() {
           {/* Giriş ve Kayıt */}
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+
+          {/* Ödeme Sayfaları */}
+          <Route path="/success" element={<Success />} />
 
           {/* QR Menü */}
           <Route

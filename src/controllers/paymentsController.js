@@ -31,7 +31,8 @@ export const createPayment = async (req, res) => {
     const { package_type = "basic", branches = 1 } = req.body;
     const total = calculateTotal(package_type, branches);
     const pricePerBranch = total.perBranch;
-    const totalPrice = total.monthly;
+    const monthlyPrice = total.monthly;
+    const totalPrice = monthlyPrice * 12; // Yıllık toplam
 
     const pool = await poolPromise;
 
@@ -52,42 +53,61 @@ export const createPayment = async (req, res) => {
           (@user_id, @package_type, @max_branches, @price_per_branch, @total_price, @trial_start_date, @trial_end_date, @is_trial_active, GETDATE())
       `);
 
-    // 2) Iyzico'ya istek (gerçek sağlayıcıysa burada gerçek istek yapılır)
-    // Biz test/sahte akışta iyzicoCreate çağırıp checkoutForm alıyoruz. Eğer sandbox yoksa, fallback fake response kullan.
+    // 2) Iyzico'ya istek (SDK ile)
     let iyzicoResult = null;
     try {
-      // örnek buyer - gerçek projede kullanıcı bilgilerinden al
-      const buyer = { id: String(user_id), name: "Buyer", surname: "-", email: "buyer@example.com", phone: "+905555555555" };
+      // Kullanıcı bilgilerini al
+      const userInfo = await pool.request()
+        .input("user_id", sql.Int, user_id)
+        .query("SELECT name, email, phone FROM Users WHERE id = @user_id");
+
+      const user = userInfo.recordset[0];
+      if (!user) throw new Error("Kullanıcı bulunamadı");
+
+      const conversationId = `pay_${user_id}_${Date.now()}`;
       const basketItems = [{
         id: (package_type + "_" + Date.now()).toString(),
         name: `${package_type} paket (${branches} şube)`,
-        price: totalPrice
+        category1: "Abonelik",
+        category2: "Yazılım",
+        itemType: "VIRTUAL",
+        price: totalPrice.toFixed(2)
       }];
 
+      const callbackUrl = `${process.env.BASE_URL || "http://localhost:5000"}/api/subscription/callback`;
+
       iyzicoResult = await iyzicoCreate({
+        conversationId,
         price: totalPrice,
         paidPrice: totalPrice,
-        buyer,
-        basketItems
+        user: {
+          id: user_id,
+          name: user.name || "Kullanıcı",
+          email: user.email || "test@example.com",
+          phone: user.phone || "+905555555555"
+        },
+        basketItems,
+        callbackUrl
       });
     } catch (iyzErr) {
-      // Iyzipay hatası bile olsa biz devam edip veritabanına kaydedebiliriz (test senaryosu)
-      console.warn("Iyzico create error (dev fallback):", iyzErr);
+      console.warn("Iyzico create error:", iyzErr);
     }
 
-    // 3) Payments tablosuna kayıt (senin şemaya uygun)
+    // 3) Payments tablosuna kayıt (güncel şema ile)
     const fakeTransactionId = `TRX-${Date.now()}`;
-    const customerOrderId = `${user_id}_${Date.now()}`; // bu alan nvarchar diye kabul edelim
+    const customerOrderId = `pay_${user_id}_${Date.now()}`;
 
     await pool.request()
       .input("customer_order_id", sql.NVarChar, customerOrderId)
       .input("amount", sql.Decimal(18,2), totalPrice)
-      .input("payment_method", sql.NVarChar, iyzicoResult?.payment_method || "iyzico_test")
-      .input("transaction_id", sql.NVarChar, iyzicoResult?.paymentId || fakeTransactionId)
-      .input("paid_at", sql.DateTime, new Date())
+      .input("payment_method", sql.NVarChar, iyzicoResult?.payment_method || "iyzico")
+      .input("status", sql.NVarChar, "pending")
+      .input("iyzico_token", sql.NVarChar, iyzicoResult?.token || null)
+      .input("payment_url", sql.NVarChar, iyzicoResult?.paymentPageUrl || null)
+      .input("created_at", sql.DateTime, new Date())
       .query(`
-        INSERT INTO Payments (customer_order_id, amount, payment_method, transaction_id, paid_at)
-        VALUES (@customer_order_id, @amount, @payment_method, @transaction_id, @paid_at)
+        INSERT INTO Payments (customer_order_id, amount, payment_method, status, iyzico_token, payment_url, created_at)
+        VALUES (@customer_order_id, @amount, @payment_method, @status, @iyzico_token, @payment_url, @created_at)
       `);
 
     // 4) Response - iyzicoResult varsa onun checkout bilgilerini dön, yoksa fake transaction gönder

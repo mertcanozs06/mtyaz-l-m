@@ -44,8 +44,8 @@ export default function Login() {
 
       if (!res.ok) throw new Error(data.message || "Giriş başarısız.");
 
-      // 🎟️ Paket durumu kontrolü
-      if (data.package && data.package.status !== "active") {
+      // 🎟️ Paket durumu kontrolü - Trial aktifse girişe izin ver
+      if (data.package && data.package.status !== "active" && data.package.status !== "trial") {
         setErrorMessage("Paketiniz aktif değil. Ödeme yapmanız gerekiyor. Yönlendiriliyorsunuz...");
         setTimeout(() => navigate("/register"), 3000);
         return;
