@@ -65,7 +65,7 @@ export default function Login() {
         if (role === "waiter") navigate(`/dashboard/${restaurant_id}/${targetBranch}/waiter`);
         else if (role === "kitchen") navigate(`/dashboard/${restaurant_id}/${targetBranch}/kitchen`);
         else navigate(`/dashboard/${restaurant_id}/${targetBranch}`);
-      }, 1500);
+      }, 300);
     } catch (err) {
       console.error("Login error:", err);
       setErrorMessage(err.message || "Giriş başarısız.");

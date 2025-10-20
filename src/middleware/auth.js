@@ -32,18 +32,43 @@ export const authMiddleware =
         });
       }
 
-      // Kullanıcı aktif mi?
+      // Kullanıcı aktif mi? (Trial kullanıcıları için bypass)
       const pool = await poolPromise;
       const statusRes = await pool
         .request()
         .input("id", sql.Int, decoded.id)
-        .query("SELECT is_active FROM Users WHERE id = @id");
+        .query(`
+          SELECT u.is_active, up.is_trial_active, up.trial_end_date
+          FROM Users u
+          LEFT JOIN UserPackages up ON u.id = up.user_id
+          WHERE u.id = @id
+        `);
 
-      if (statusRes.recordset.length === 0 || !statusRes.recordset[0].is_active) {
+      if (statusRes.recordset.length === 0) {
+        await logAuditAction(decoded.id, "USER_NOT_FOUND", null, decoded.restaurant_id, decoded.branch_id);
+        return res.status(404).json({
+          message: "Kullanıcı bulunamadı",
+          error_code: "USER_NOT_FOUND",
+        });
+      }
+
+      const { is_active, is_trial_active, trial_end_date } = statusRes.recordset[0];
+
+      // Trial aktifse veya kullanıcı aktifse devam et
+      if (!is_active && !is_trial_active) {
         await logAuditAction(decoded.id, "INACTIVE_USER_ACCESS", null, decoded.restaurant_id, decoded.branch_id);
         return res.status(403).json({
           message: "Kullanıcı hesabı aktif değil",
           error_code: "INACTIVE_USER",
+        });
+      }
+
+      // Trial süresi dolmuşsa
+      if (is_trial_active && new Date(trial_end_date) < new Date()) {
+        await logAuditAction(decoded.id, "TRIAL_EXPIRED", null, decoded.restaurant_id, decoded.branch_id);
+        return res.status(403).json({
+          message: "Deneme süreniz dolmuştur. Ödeme yapmanız gerekiyor.",
+          error_code: "TRIAL_EXPIRED",
         });
       }
 
