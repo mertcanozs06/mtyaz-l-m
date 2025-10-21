@@ -83,16 +83,6 @@ export const createPayment = async (req, res) => {
       `);
 
     await pool.request()
-      .input("order_id", sql.NVarChar, customerOrderId)
-      .input("customer_id", sql.Int, user_id)
-      .input("total_price", sql.Decimal(18, 2), totalPrice)
-      .input("payment_status", sql.NVarChar, "pending")
-      .query(`
-        INSERT INTO CustomerOrders (order_id, customer_id, total_price, payment_status)
-        VALUES (@order_id, @customer_id, @total_price, @payment_status)
-      `);
-
-    await pool.request()
       .input("user_id", sql.Int, user_id)
       .input("package_type", sql.NVarChar, package_type)
       .input("max_branches", sql.Int, branches)

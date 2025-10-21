@@ -50,7 +50,11 @@ const PrivateRoute = ({ roles, allowedPackages, children }) => {
       setLoading(false);
     };
 
-    checkAuthorization();
+    if (branches && branches.length > 0) {
+      checkAuthorization();
+    } else {
+      setLoading(false);
+    }
   }, [user, branches, package_type, token, restaurantId, branchId, roles, allowedPackages]);
 
   if (loading) {

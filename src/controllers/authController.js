@@ -120,9 +120,9 @@ export const register = async (req, res) => {
       .input("phone", sql.NVarChar, phone || "")
       .input("package_type", sql.NVarChar, package_type)
       .query(`
-        INSERT INTO Users (restaurant_id, branch_id, name, email, password, phone, role, package_type, is_active, is_initial_admin, createdAt)
+        INSERT INTO Users (restaurant_id, branch_id, name, email, password, phone, role, package_type, is_active, is_initial_admin, createdAt, updatedAt, last_login_at)
         OUTPUT INSERTED.id
-        VALUES (@restaurant_id, @branch_id, @name, @email, @password, @phone, 'admin', @package_type, 0, 1, GETDATE())
+        VALUES (@restaurant_id, @branch_id, @name, @email, @password, @phone, 'admin', @package_type, 0, 1, GETDATE(), GETDATE(), NULL)
       `);
     const user_id = userResult.recordset[0].id;
 
@@ -144,9 +144,9 @@ export const register = async (req, res) => {
       .input("is_trial_active", sql.Bit, 1)
       .query(`
         INSERT INTO UserPackages
-          (user_id, package_type, max_branches, price_per_branch, total_price, trial_start_date, trial_end_date, is_trial_active, created_at)
+          (user_id, package_type, max_branches, price_per_branch, total_price, trial_start_date, trial_end_date, is_trial_active, created_at, updated_at)
         VALUES
-          (@user_id, @package_type, @max_branches, @price_per_branch, @total_price, @trial_start_date, @trial_end_date, @is_trial_active, GETDATE())
+          (@user_id, @package_type, @max_branches, @price_per_branch, @total_price, @trial_start_date, @trial_end_date, @is_trial_active, GETDATE(), GETDATE())
       `);
 
     // 💳 Iyzico ödeme başlat (SDK ile)

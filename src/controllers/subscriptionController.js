@@ -32,20 +32,19 @@ export const createSubscription = async (req, res) => {
     // 🧾 Ödeme kaydı oluştur (güncel şema ile)
     const conversationId = `sub_${user.id}_${Date.now()}`;
 
-    const insertQuery = `
-      INSERT INTO Payments (customer_order_id, amount, payment_method, payment_url)
-      OUTPUT INSERTED.id
-      VALUES (@customer_order_id, @amount, @payment_method, @payment_url)
-    `;
-
     const customerOrderId = `sub_${user.id}_${Date.now()}`;
 
     const insertResult = await pool.request()
       .input("customer_order_id", sql.NVarChar, customerOrderId)
       .input("amount", sql.Decimal(18, 2), totalPrice)
       .input("payment_method", sql.NVarChar, "iyzico")
-      .input("payment_url", sql.NVarChar, null) // Henüz URL yok
-      .query(insertQuery);
+      .input("status", sql.NVarChar, "pending")
+      .input("created_at", sql.DateTime, new Date())
+      .query(`
+        INSERT INTO Payments (customer_order_id, amount, payment_method, status, created_at)
+        OUTPUT INSERTED.id
+        VALUES (@customer_order_id, @amount, @payment_method, @status, @created_at)
+      `);
 
     const paymentId = insertResult.recordset[0]?.id;
 
@@ -192,14 +191,14 @@ export const handleIyzicoCallback = async (req, res) => {
             WHERE restaurant_id = (SELECT restaurant_id FROM Users WHERE id = @user_id)
           `);
 
-        // 📦 UserPackages tablosunda güncelle (ödeme sonrası aktif)
-        await pool.request()
-          .input("user_id", sql.Int, userId)
-          .query(`
-            UPDATE UserPackages
-            SET is_trial_active = 0
-            WHERE user_id = @user_id
-          `);
+    // 📦 UserPackages tablosunda güncelle (ödeme sonrası aktif)
+    await pool.request()
+      .input("user_id", sql.Int, userId)
+      .query(`
+        UPDATE UserPackages
+        SET is_trial_active = 0, updated_at = GETDATE()
+        WHERE user_id = @user_id
+      `);
 
         console.log(`✅ Kullanıcı #${userId} aktif hale getirildi (ödeme başarılı).`);
       }

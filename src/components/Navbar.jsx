@@ -15,57 +15,6 @@ const Navbar = () => {
   } = useContext(AuthContext);
 
   const [openDropdown, setOpenDropdown] = useState(null);
-  const [errorMessage, setErrorMessage] = useState('');
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchBranches = async () => {
-      if (!user) {
-        setErrorMessage('Kullanıcı bilgisi eksik.');
-        setLoading(false);
-        return;
-      }
-      if (branches && branches.length > 0) {
-        setLoading(false);
-        return;
-      }
-
-      try {
-        const res = await fetch(
-          `http://localhost:5000/api/restaurant/${user.restaurant_id}/branches`,
-          {
-            headers: {
-              Authorization: `Bearer ${localStorage.getItem('token')}`,
-            },
-          }
-        );
-
-        if (!res.ok) {
-          if (res.status === 401) {
-            setErrorMessage('Oturumunuz sona erdi. Lütfen tekrar giriş yapın.');
-            logout();
-            navigate('/login');
-            return;
-          }
-          if (res.status === 403) throw new Error('Bu restorana erişim yetkiniz yok.');
-          throw new Error('Şubeler yüklenemedi');
-        }
-
-        const data = await res.json();
-        if (data.length > 0) {
-          const branchToSelect = branchId || data[0].id.toString();
-          setSelectedBranch(branchToSelect);
-        }
-      } catch (err) {
-        setErrorMessage(err.message);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    console.log('NavLink rendering:', { restaurantId, branchId, selectedBranch });
-    fetchBranches();
-  }, [user, branches, branchId, setSelectedBranch, logout, navigate]);
 
   const toggleDropdown = (name) => {
     setOpenDropdown((prev) => (prev === name ? null : name));
@@ -121,40 +70,10 @@ const Navbar = () => {
   const role = user?.role || 'waiter';
   const roleNavItems = Array.isArray(navItems[role]) ? navItems[role] : [];
   const availableNavItems = roleNavItems.filter(
-    (item) => !item.packages || item.packages.includes(package_type)
+    (item) => !item.packages || !package_type || item.packages.includes(package_type)
   );
 
-  const buildLink = (subPath) => `/dashboard/${restaurantId}/${selectedBranch || branchId}/${subPath}`;
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-xl text-gray-600">Yükleniyor...</div>
-      </div>
-    );
-  }
-
-  if (errorMessage) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="bg-red-100 text-red-600 p-4 rounded-md shadow-md max-w-md text-center">
-          {errorMessage}
-          <button
-            className="mt-4 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
-            onClick={() => {
-              setErrorMessage('');
-              if (errorMessage.includes('Oturumunuz sona erdi')) {
-                logout();
-                navigate('/login');
-              }
-            }}
-          >
-            Kapat
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const buildLink = (subPath) => `/dashboard/${restaurantId}/${selectedBranch || branchId || ''}/${subPath}`;
 
   return (
     <>
