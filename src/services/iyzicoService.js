@@ -1,8 +1,6 @@
-// Dosya: services/iyzicoService.js
+// services/iyzicoService.js (DEĞİŞMEDİ)
 import Iyzipay from "iyzipay";
-
 import dotenv from "dotenv";
-
 dotenv.config();
 
 const IYZICO_API_KEY = process.env.IYZICO_API_KEY;
@@ -25,8 +23,7 @@ export const createIyzicoPayment = async ({
   callbackUrl,
 }) => {
   try {
-    console.log("🚀 Iyzico SDK ile ödeme başlatılıyor...");
-
+    console.log("Iyzico SDK ile ödeme başlatılıyor...");
     let formattedPhone = user.phone || "";
     formattedPhone = formattedPhone.replace(/\D/g, "");
     if (formattedPhone.startsWith("90") && formattedPhone.length === 12) {
@@ -38,21 +35,13 @@ export const createIyzicoPayment = async ({
     } else {
       formattedPhone = "+905555555555";
     }
-
     const email = user.email && user.email.includes("@") ? user.email : "test@example.com";
-
     if (!basketItems || !Array.isArray(basketItems) || basketItems.length === 0) {
-      console.error("❌ basketItems eksik veya geçersiz:", basketItems);
-      return {
-        success: false,
-        errorMessage: "Sepet öğeleri eksik veya geçersiz.",
-        errorCode: "INVALID_BASKET_ITEMS",
-      };
+      return { success: false, errorMessage: "Sepet öğeleri eksik.", errorCode: "INVALID_BASKET_ITEMS" };
     }
 
     const priceValue = parseFloat(price);
     const paidPriceValue = parseFloat(paidPrice);
-
     const fullName = user.name || "User";
     const nameParts = fullName.split(" ");
     const buyerName = nameParts[0] || "User";
@@ -64,7 +53,7 @@ export const createIyzicoPayment = async ({
       price: priceValue.toFixed(2),
       paidPrice: paidPriceValue.toFixed(2),
       currency: Iyzipay.CURRENCY.TRY,
-      installment: "1", // Taksit kaldırılsın, yıllık ödeme için
+      installment: "1",
       basketId: `BASKET_${conversationId}`,
       paymentGroup: Iyzipay.PAYMENT_GROUP.SUBSCRIPTION,
       callbackUrl: callbackUrl || `${BASE_URL}/api/subscription/callback`,
@@ -82,18 +71,8 @@ export const createIyzicoPayment = async ({
         city: "Istanbul",
         country: "Turkey",
       },
-      shippingAddress: {
-        contactName: `${buyerName} ${buyerSurname}`,
-        city: "Istanbul",
-        country: "Turkey",
-        address: "Online Service",
-      },
-      billingAddress: {
-        contactName: `${buyerName} ${buyerSurname}`,
-        city: "Istanbul",
-        country: "Turkey",
-        address: "Online Service",
-      },
+      shippingAddress: { contactName: `${buyerName} ${buyerSurname}`, city: "Istanbul", country: "Turkey", address: "Online Service" },
+      billingAddress: { contactName: `${buyerName} ${buyerSurname}`, city: "Istanbul", country: "Turkey", address: "Online Service" },
       basketItems: basketItems.map((item) => ({
         id: item.id || String(Date.now()),
         name: item.name,
@@ -104,130 +83,54 @@ export const createIyzicoPayment = async ({
       })),
     };
 
-    console.log("📋 SDK Request:", JSON.stringify(request, null, 2));
-
     return new Promise((resolve) => {
       iyzipay.checkoutFormInitialize.create(request, (err, result) => {
         if (err) {
-          console.error("❌ Iyzico SDK hatası:", err);
-          resolve({
-            success: false,
-            errorMessage: formatIyzicoError(err.errorMessage || "SDK hatası"),
-            errorCode: err.errorCode || "SDK_ERROR",
-            rawError: err,
-          });
+          console.error("Iyzico SDK hatası:", err);
+          resolve({ success: false, errorMessage: formatIyzicoError(err.errorMessage || "SDK hatası"), errorCode: err.errorCode || "SDK_ERROR" });
           return;
         }
-
-        console.log("📥 SDK Response:", JSON.stringify(result, null, 2));
-
         if (result.status === "success" && result.paymentPageUrl && result.token) {
-          console.log("✅ Iyzico ödeme SDK ile oluşturuldu:", result.paymentPageUrl);
-          resolve({
-            success: true,
-            token: result.token,
-            paymentPageUrl: result.paymentPageUrl,
-            paymentId: result.paymentId || null,
-          });
+          resolve({ success: true, token: result.token, paymentPageUrl: result.paymentPageUrl, paymentId: result.paymentId || null });
         } else {
-          console.warn("⚠️ Iyzico SDK ödeme hatası:", {
-            errorMessage: result.errorMessage,
-            errorCode: result.errorCode,
-            rawResponse: result,
-          });
-          resolve({
-            success: false,
-            errorMessage: formatIyzicoError(result.errorMessage || "Ödeme başlatılamadı."),
-            errorCode: result.errorCode || "UNKNOWN_ERROR",
-            rawResponse: result,
-          });
+          resolve({ success: false, errorMessage: formatIyzicoError(result.errorMessage || "Ödeme başlatılamadı."), errorCode: result.errorCode || "UNKNOWN_ERROR" });
         }
       });
     });
   } catch (err) {
-    console.error("💥 createIyzicoPayment SDK hatası:", err.message, err.stack);
-    return {
-      success: false,
-      errorMessage: err.message,
-      errorCode: "INTERNAL_ERROR",
-      rawResponse: null,
-    };
+    console.error("createIyzicoPayment SDK hatası:", err.message);
+    return { success: false, errorMessage: err.message, errorCode: "INTERNAL_ERROR" };
   }
 };
 
 export const verifyPayment = async (token) => {
   try {
-    console.log("🔍 Iyzico SDK ile ödeme doğrulama başlatıldı, token:", token);
-
-    const request = {
-      locale: Iyzipay.LOCALE.TR,
-      token: token,
-    };
-
+    const request = { locale: Iyzipay.LOCALE.TR, token };
     return new Promise((resolve) => {
       iyzipay.checkoutForm.retrieve(request, (err, result) => {
         if (err) {
-          console.error("❌ Iyzico SDK doğrulama hatası:", err);
-          resolve({
-            status: "failed",
-            errorMessage: formatIyzicoError(err.errorMessage || "Doğrulama hatası"),
-            errorCode: err.errorCode || "SDK_ERROR",
-            raw: err,
-          });
+          resolve({ status: "failed", errorMessage: formatIyzicoError(err.errorMessage || "Doğrulama hatası"), errorCode: err.errorCode || "SDK_ERROR" });
           return;
         }
-
-        console.log("📥 SDK Doğrulama Response:", JSON.stringify(result, null, 2));
-
         if (result.status === "success") {
-          console.log("✅ Ödeme SDK ile doğrulandı:", token);
-          resolve({
-            status: "success",
-            paymentId: result.paymentId,
-            amount: result.paidPrice,
-            currency: result.currency,
-            paymentStatus: result.paymentStatus,
-            raw: result,
-          });
+          resolve({ status: "success", paymentId: result.paymentId, amount: result.paidPrice, currency: result.currency, paymentStatus: result.paymentStatus });
         } else {
-          console.warn("⚠️ Ödeme doğrulama başarısız:", {
-            errorMessage: result.errorMessage,
-            errorCode: result.errorCode,
-            raw: result,
-          });
-          resolve({
-            status: "failed",
-            errorMessage: formatIyzicoError(result.errorMessage || "Ödeme doğrulanamadı."),
-            errorCode: result.errorCode || "UNKNOWN_ERROR",
-            raw: result,
-          });
+          resolve({ status: "failed", errorMessage: formatIyzicoError(result.errorMessage || "Ödeme doğrulanamadı."), errorCode: result.errorCode || "UNKNOWN_ERROR" });
         }
       });
     });
   } catch (err) {
-    console.error("💥 verifyPayment SDK hatası:", err.message, err.stack);
-    return {
-      status: "failed",
-      errorMessage: err.message,
-      errorCode: "INTERNAL_ERROR",
-      raw: null,
-    };
+    return { status: "failed", errorMessage: err.message, errorCode: "INTERNAL_ERROR" };
   }
 };
 
 export const formatIyzicoError = (errMsg) => {
-  if (!errMsg) return "Bilinmeyen bir hata oluştu.";
-  if (errMsg.includes("Do not honour")) return "Kart reddedildi, lütfen farklı bir kart deneyin.";
+  if (!errMsg) return "Bilinmeyen hata.";
+  if (errMsg.includes("Do not honour")) return "Kart reddedildi.";
   if (errMsg.includes("Invalid Card Number")) return "Kart numarası geçersiz.";
   if (errMsg.includes("Insufficient Funds")) return "Yetersiz bakiye.";
   if (errMsg.includes("Expired Card")) return "Kart süresi dolmuş.";
-  if (errMsg.includes("Invalid request")) return "Geçersiz istek. Lütfen bilgilerinizi kontrol edin.";
   return errMsg;
 };
 
-export default {
-  createIyzicoPayment,
-  verifyPayment,
-  formatIyzicoError,
-};
-
+export default { createIyzicoPayment, verifyPayment, formatIyzicoError };

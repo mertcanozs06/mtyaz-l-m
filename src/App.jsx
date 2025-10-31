@@ -1,5 +1,5 @@
-import React, { useContext, useEffect } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import React, { useContext, useEffect , useState} from 'react';
+import { Routes, Route, Navigate , useLocation } from 'react-router-dom';
 import { AuthContext } from './context/AuthContext.jsx';
 import { SocketContext } from './context/SocketContext.jsx';
 import Home from './pages/home/Home';
@@ -32,10 +32,19 @@ import QRMenu from './pages/qrmenu/QRMenu.jsx';
 import Garson from './pages/dashboard/garson/Garson.jsx';
 import BranchAdd from './pages/dashboard/branchadd/BranchAdd.jsx';
 import Error from './pages/error/Error.jsx';
-
+import LoadingScreen from './components/LoadingScreen/LoadingScreen.jsx'
 function App() {
   const { user, selectedBranch } = useContext(AuthContext);
   const { socket } = useContext(SocketContext);
+  const location = useLocation(); // route değişimini algılamak için
+  const [loading, setLoading] = useState(true);
+
+    // Route değiştiğinde 2 saniye loading göster
+  useEffect(() => {
+    setLoading(true);
+    const timer = setTimeout(() => setLoading(false), 2000);
+    return () => clearTimeout(timer);
+  }, [location]);
 
   useEffect(() => {
     if (socket && user && selectedBranch) {
@@ -52,6 +61,10 @@ function App() {
       }
     }
   }, [socket, user, selectedBranch]);
+
+   if (loading) {
+    return <LoadingScreen />;
+  }
 
   return (
    

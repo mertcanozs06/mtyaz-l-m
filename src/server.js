@@ -59,6 +59,7 @@ app.use((req, res, next) => {
 
 // === JSON Body Parser ===
 app.use(express.json());
+app.use(express.urlencoded({ extended: true })); // Iyzico callback için form data parsing
 app.use('/uploads', express.static(join(__dirname, '..', 'Uploads')));
 
 // === SOCKET.IO ===

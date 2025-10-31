@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import Header from '../../components/header/Header';
 import Slick from '../../components/slider/Slick';
 
@@ -9,6 +9,7 @@ import NedenBizi from '../../components/nedenbizi/NedenBizi';
 import Footer from '../../components/footer/Footer';
 import FAQ from '../../components/faq/FAQ';
 const Home = () => {
+ 
   return (
     <main className="w-full min-h-screen overflow-x-hidden">
       <div className='p-2 bg-blue-700 w-full  text-xl text-center text-white'>

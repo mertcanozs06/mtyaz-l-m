@@ -109,30 +109,7 @@ router.post('/:restaurant_id/:branch_id', authMiddleware(['admin', 'owner']), as
       return res.status(400).json({ message: validation.message, error_code: validation.error_code });
     }
 
-    // Paket kontrolü
-    const packageResult = await request
-      .input('user_id', sql.Int, req.user.user_id)
-      .query('SELECT max_tables FROM UserPackages WHERE user_id = @user_id');
-    if (packageResult.recordset.length === 0) {
-      await transaction.rollback();
-      return res.status(403).json({ message: 'Geçerli paket bulunamadı', error_code: 'INVALID_PACKAGE' });
-    }
-
-    const { max_tables } = packageResult.recordset[0];
-    const currentTables = await request
-      .input('restaurant_id', sql.Int, parseInt(restaurant_id))
-      .input('branch_id', sql.Int, parseInt(branch_id))
-      .query('SELECT COUNT(*) AS count FROM Tables WHERE restaurant_id = @restaurant_id AND branch_id = @branch_id');
-
-    const tableCount = currentTables.recordset[0].count;
     const requestedCount = table_count || 1;
-
-    if (tableCount + requestedCount > max_tables) {
-      await logAuditAction(req.user.user_id, 'TABLE_LIMIT_EXCEEDED', null, restaurant_id, branch_id, transaction);
-      await transaction.rollback();
-      return res.status(403).json({ message: 'Masa sayısı paket limitini aşıyor', error_code: 'TABLE_LIMIT_EXCEEDED' });
-    }
-
     const addedTables = [];
     for (let i = 1; i <= requestedCount; i++) {
       const num = table_count ? i : table_number;

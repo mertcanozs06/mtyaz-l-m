@@ -71,15 +71,34 @@ export const createPayment = async (req, res) => {
     const customerOrderId = `pay_${user_id}_${Date.now()}`;
     await pool.request()
       .input("customer_order_id", sql.NVarChar, customerOrderId)
+      .input("user_id", sql.Int, user_id)
       .input("amount", sql.Decimal(18, 2), totalPrice)
       .input("payment_method", sql.NVarChar, "iyzico")
       .input("status", sql.NVarChar, "pending")
       .input("iyzico_token", sql.NVarChar, iyzicoResult.token)
       .input("payment_url", sql.NVarChar, iyzicoResult.paymentPageUrl)
+      .input("package_type", sql.NVarChar, package_type)
+      .input("branch_count", sql.Int, branches)
+      .input("branch_id", sql.Int, decoded.branch_id)
+      .input("transaction_id", sql.NVarChar, iyzicoResult.paymentId || `TRX-${user_id}-${Date.now()}`)
+      .input("subscription_status", sql.NVarChar, "pending")
       .input("created_at", sql.DateTime, new Date())
       .query(`
-        INSERT INTO Payments (customer_order_id, amount, payment_method, status, iyzico_token, payment_url, created_at)
-        VALUES (@customer_order_id, @amount, @payment_method, @status, @iyzico_token, @payment_url, @created_at)
+        INSERT INTO Payments (customer_order_id, user_id, amount, payment_method, status, iyzico_token, payment_url, package_type, branch_count, branch_id, transaction_id, subscription_status, created_at)
+        VALUES (@customer_order_id, @user_id, @amount, @payment_method, @status, @iyzico_token, @payment_url, @package_type, @branch_count, @branch_id, @transaction_id, @subscription_status, @created_at)
+      `);
+
+    // UserAuditLog'a ödeme başlatma logu ekle
+    await pool.request()
+      .input("user_id", sql.Int, user_id)
+      .input("action", sql.NVarChar, "PAYMENT_INITIATED")
+      .input("target_user_id", sql.Int, user_id)
+      .input("restaurant_id", sql.Int, decoded.restaurant_id)
+      .input("branch_id", sql.Int, decoded.branch_id)
+      .input("created_at", sql.DateTime, new Date())
+      .query(`
+        INSERT INTO UserAuditLog (user_id, action, target_user_id, restaurant_id, branch_id, created_at)
+        VALUES (@user_id, @action, @target_user_id, @restaurant_id, @branch_id, @created_at)
       `);
 
     await pool.request()

@@ -1,21 +1,26 @@
-# TODO: Iyzico SDK Entegrasyonu ve Güncellemeler
+# TODO: Veritabanı Sütunlarını Doldurma Görevleri
 
-## Tasks
-- [x] src/services/iyzicoService.js'i iyzipay SDK'sı ile yeniden yaz
-- [x] createIyzicoPayment fonksiyonunu SDK ile implement et
-- [x] verifyPayment fonksiyonunu SDK ile implement et
-- [x] Hata yönetimini ve loglamayı geliştir
-- [x] Payments tablosuna iyzico_token ve payment_url sütunlarını kullan
-- [x] Controllers'ları SDK yanıtlarına göre güncelle
-- [x] Yıllık abonelik modeline geçiş (30 gün trial + ₺144.000 yıllık)
-- [x] Trial sonrası ödeme ile aktifleşme mantığı
-- [x] 12 taksit (vade farkı olmadan yıllık)
-- [x] Sandbox testlerini çalıştır ve doğrula
-- [x] Veritabanı işlemlerini yeni şemaya göre güncelle
+## 1. UserAuditLog Tablosu
+- [x] authController.js'de kayıt sırasında "USER_REGISTERED" logu ekle
+- [x] paymentsController.js'de ödeme sırasında "PAYMENT_INITIATED" logu ekle
+- [x] subscriptionController.js'de callback'de "PAYMENT_COMPLETED" logu ekle
+- [x] subscriptionController.js'de createSubscription'da "SUBSCRIPTION_INITIATED" logu ekle
 
-## Notes
-- iyzipay SDK'sı package.json'da mevcut (v2.0.64)
-- Payments tablosunda iyzico_token ve payment_url sütunları eklendi
-- Mevcut manuel fetch implementasyonu SDK ile değiştirilecek
-- Hata mesajları Türkçe olacak
-- Veritabanı şeması güncel: UserPackages, UserAuditLog, Users, Payments tablolarında yeni sütunlar var
+## 2. UserPackages Tablosu
+- [x] authController.js'de UserPackages eklerken start_date ve end_date'yi doldur (zaten var ama emin ol)
+- [x] Status için is_trial_active kullan (1=trial, 0=active)
+
+## 3. Payments Tablosu
+- [x] authController.js'de Payments eklerken transaction_id (iyzico token) ve branch_id (user.branch_id) ekle
+- [x] paymentsController.js'de createPayment'de transaction_id ve branch_id ekle
+- [x] subscriptionController.js'de createSubscription'da branch_id ekle
+
+## 4. Users Tablosu
+- [x] authController.js'de kayıt sırasında updatedAt=createdAt, created_by=null, branch_count=totalBranches ekle
+- [x] authController.js'de login sırasında last_login_at güncelle
+- [x] deactivated_at için şimdilik null bırak (gerektiğinde eklenir)
+
+## 5. Test Etme
+- [ ] Kayıt işlemi test et
+- [ ] Ödeme işlemi test et
+- [ ] Login işlemi test et
